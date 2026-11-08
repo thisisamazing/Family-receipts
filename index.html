@@ -17,6 +17,38 @@
 <body class="bg-slate-50 text-slate-900 font-sans">
   <div id="root"></div>
 
+  <!-- Firebase Modular SDK Script -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Standard Cloud Firebase Setup
+    const firebaseConfig = typeof __firebase_config !== 'undefined' 
+      ? JSON.parse(__firebase_config) 
+      : { apiKey: "demo", authDomain: "demo.firebaseapp.com", projectId: "demo-app" };
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'family-receipts-app';
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    window.FamilyCloud = {
+      db,
+      auth,
+      appId,
+      collection,
+      onSnapshot,
+      doc,
+      setDoc,
+      deleteDoc,
+      signInAnonymously,
+      signInWithCustomToken,
+      onAuthStateChanged
+    };
+  </script>
+
   <script type="text/babel">
     const { useState, useEffect, useMemo, useRef } = React;
 
@@ -28,6 +60,18 @@
       return `${dd}/${mm}/${yy}`;
     };
 
+    const parseDateForSort = (dateStr) => {
+      if (!dateStr) return 0;
+      const parts = dateStr.split(/[\/\-]/);
+      if (parts.length === 3) {
+        let day = parseInt(parts[0], 10);
+        let month = parseInt(parts[1], 10) - 1;
+        let year = parseInt(parts[2].length === 2 ? `20${parts[2]}` : parts[2], 10);
+        return new Date(year, month, day).getTime();
+      }
+      return 0;
+    };
+
     const DEFAULT_MEMBERS = [
       { id: 'nikos', name: 'Νίκος', role: 'Γονέας', color: 'bg-blue-600 text-white', badge: 'bg-blue-100 text-blue-800 border-blue-300' },
       { id: 'anthi', name: 'Ανθή', role: 'Γονέας', color: 'bg-rose-600 text-white', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
@@ -36,15 +80,24 @@
       { id: 'christina', name: 'Χριστίνα', role: 'Παιδί', color: 'bg-teal-600 text-white', badge: 'bg-teal-100 text-teal-800 border-teal-300' }
     ];
 
-    const BENEFICIARY_OPTIONS = [
-      'Όλη η Οικογένεια',
-      'Κορίτσια (Αγγελική & Χριστίνα 50-50)',
-      'Νίκος',
-      'Ανθή',
-      'Θεοδώρα',
-      'Αγγελική',
-      'Χριστίνα'
+    const BENEFICIARIES_CONFIG = [
+      { name: 'Όλη η Οικογένεια', badge: 'bg-indigo-100 text-indigo-900 border-indigo-300' },
+      { name: 'Κορίτσια (Αγγελική & Χριστίνα 50-50)', badge: 'bg-pink-100 text-pink-900 border-pink-300 font-bold' },
+      { name: 'Νίκος', badge: 'bg-blue-100 text-blue-900 border-blue-300' },
+      { name: 'Ανθή', badge: 'bg-rose-100 text-rose-900 border-rose-300' },
+      { name: 'Θεοδώρα', badge: 'bg-purple-100 text-purple-900 border-purple-300' },
+      { name: 'Αγγελική', badge: 'bg-amber-100 text-amber-900 border-amber-300' },
+      { name: 'Χριστίνα', badge: 'bg-teal-100 text-teal-900 border-teal-300' }
     ];
+
+    const BENEFICIARY_OPTIONS = BENEFICIARIES_CONFIG.map(b => b.name);
+
+    const getBeneficiaryBadge = (name) => {
+      const ben = BENEFICIARIES_CONFIG.find(b => b.name === name);
+      if (ben) return ben.badge;
+      if (name && name.includes('Κορίτσια')) return 'bg-pink-100 text-pink-900 border-pink-300 font-bold';
+      return 'bg-slate-100 text-slate-800 border-slate-300';
+    };
 
     const CATEGORIES = [
       { id: 'Supermarket', label: 'Υπεραγορά / Τρόφιμα', icon: '🛒', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
@@ -65,30 +118,29 @@
       { id: 'rec_1', merchant: 'AB Vassilopoulos', subcategory: 'Ψώνια Εβδομάδας', date: '01/11/26', category: 'Supermarket', memberId: 'anthi', memberName: 'Ανθή', beneficiary: 'Όλη η Οικογένεια', total: 48.65, paymentMethod: 'Card', notes: '' },
       { id: 'rec_2', merchant: 'EKO Gas Station', subcategory: 'Βενζίνη', date: '02/11/26', category: 'Fuel & Transport', memberId: 'nikos', memberName: 'Νίκος', beneficiary: 'Όλη η Οικογένεια', total: 55.00, paymentMethod: 'Card', notes: '' },
       { id: 'rec_3', merchant: 'Φροντιστήριο Αγγλικών', subcategory: 'Δίδακτρα', date: '03/11/26', category: 'Education & Hobbies', memberId: 'nikos', memberName: 'Νίκος', beneficiary: 'Θεοδώρα', total: 80.00, paymentMethod: 'Bank Transfer', notes: '' },
-      { id: 'rec_4', merchant: 'Ενοίκιο Σπιτιού', subcategory: 'Μηνιαίο Ενοίκιο', date: '04/11/26', category: 'Rent', memberId: 'nikos', memberName: 'Νίκος', beneficiary: 'Όλη η Οικογένεια', total: 450.00, paymentMethod: 'Direct Order / Πάγια', notes: '' },
-      { id: 'rec_5', merchant: 'Αγορά Ρούχων', subcategory: 'Μπλούζες', date: '05/11/26', category: 'Shopping & Gifts', memberId: 'anthi', memberName: 'Ανθή', beneficiary: 'Κορίτσια (Αγγελική & Χριστίνα 50-50)', total: 60.00, paymentMethod: 'Card', notes: '' },
-      { id: 'rec_6', merchant: 'Pharmacy Central', subcategory: 'Βιταμίνες', date: '06/11/26', category: 'Health & Pharmacy', memberId: 'anthi', memberName: 'Ανθή', beneficiary: 'Χριστίνα', total: 22.40, paymentMethod: 'Card', notes: '' }
+      { id: 'rec_4', merchant: 'Ενοίκιο Σπιτιού', subcategory: 'Μηνιαίο Ενοίκιο', date: '04/11/26', category: 'Rent', memberId: 'nikos', memberName: 'Νίκος', beneficiary: 'Όλη η Οικογένεια', total: 450.00, paymentMethod: 'Direct Order / Πάγια', notes: '' }
     ];
 
     function App() {
       const [receipts, setReceipts] = useState(() => {
-        const saved = localStorage.getItem('family_receipts_v13');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          return parsed.map(r => ({ ...r, beneficiary: r.beneficiary || 'Όλη η Οικογένεια' }));
-        }
-        return INITIAL_RECEIPTS;
+        const saved = localStorage.getItem('family_receipts_v17');
+        return saved ? JSON.parse(saved) : INITIAL_RECEIPTS;
       });
 
       const [members] = useState(DEFAULT_MEMBERS);
       const [selectedMember, setSelectedMember] = useState('nikos');
       const [isScanning, setIsScanning] = useState(false);
+      const [scanQueue, setScanQueue] = useState([]);
       const [activeTab, setActiveTab] = useState('dashboard');
       const [searchTerm, setSearchTerm] = useState('');
       const [categoryFilter, setCategoryFilter] = useState('All');
       const [memberFilter, setMemberFilter] = useState('All');
       const [beneficiaryFilter, setBeneficiaryFilter] = useState('All');
       const [isListening, setIsListening] = useState(false);
+      const [cloudConnected, setCloudConnected] = useState(false);
+
+      const [sortField, setSortField] = useState('date');
+      const [sortDirection, setSortDirection] = useState('asc');
 
       const [editingReceipt, setEditingReceipt] = useState(null);
 
@@ -109,9 +161,82 @@
       const fileInputRef = useRef(null);
       const excelImportRef = useRef(null);
 
+      // Cloud Sync Connection Initialization
       useEffect(() => {
-        localStorage.setItem('family_receipts_v13', JSON.stringify(receipts));
+        const fc = window.FamilyCloud;
+        if (!fc || !fc.db) return;
+
+        const initAuthAndSync = async () => {
+          try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+              await fc.signInWithCustomToken(fc.auth, __initial_auth_token);
+            } else {
+              await fc.signInAnonymously(fc.auth);
+            }
+
+            const publicCol = fc.collection(fc.db, 'artifacts', fc.appId, 'public', 'data', 'receipts');
+
+            fc.onSnapshot(publicCol, (snapshot) => {
+              const remoteItems = [];
+              snapshot.forEach((docSnap) => {
+                remoteItems.push({ id: docSnap.id, ...docSnap.data() });
+              });
+
+              if (remoteItems.length > 0) {
+                setReceipts(remoteItems);
+                localStorage.setItem('family_receipts_v17', JSON.stringify(remoteItems));
+              }
+              setCloudConnected(true);
+            }, (err) => {
+              console.log("Cloud sync listener status:", err);
+            });
+          } catch (e) {
+            console.log("Auth setup error:", e);
+          }
+        };
+
+        initAuthAndSync();
+      }, []);
+
+      // Persistent Storage Fallback
+      useEffect(() => {
+        localStorage.setItem('family_receipts_v17', JSON.stringify(receipts));
       }, [receipts]);
+
+      const saveReceiptToCloud = async (newRec) => {
+        setReceipts(prev => [newRec, ...prev.filter(r => r.id !== newRec.id)]);
+        const fc = window.FamilyCloud;
+        if (fc && fc.db && fc.auth.currentUser) {
+          try {
+            const docRef = fc.doc(fc.db, 'artifacts', fc.appId, 'public', 'data', 'receipts', newRec.id);
+            await fc.setDoc(docRef, newRec);
+          } catch (err) {
+            console.log("Cloud save fallback to local:", err);
+          }
+        }
+      };
+
+      const removeReceiptFromCloud = async (id) => {
+        setReceipts(prev => prev.filter(r => r.id !== id));
+        const fc = window.FamilyCloud;
+        if (fc && fc.db && fc.auth.currentUser) {
+          try {
+            const docRef = fc.doc(fc.db, 'artifacts', fc.appId, 'public', 'data', 'receipts', id);
+            await fc.deleteDoc(docRef);
+          } catch (err) {
+            console.log("Cloud delete fallback to local:", err);
+          }
+        }
+      };
+
+      const handleSort = (field) => {
+        if (sortField === field) {
+          setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+          setSortField(field);
+          setSortDirection('asc');
+        }
+      };
 
       const downloadTemplate = () => {
         const XLSX = window.XLSX;
@@ -139,89 +264,48 @@
           const ws = wb.Sheets[wsname];
           const data = XLSX.utils.sheet_to_json(ws, { raw: false });
 
-          const importedReceipts = [];
-          let skippedRows = 0;
+          let importedCount = 0;
 
           data.forEach((row, index) => {
             const rawAmount = row['Σύνολο (€)'] ?? row['Σύνολο'] ?? row['Ποσό (€)'] ?? row['Ποσό'] ?? row['Amount'] ?? row['TOTAL'];
             const parsedTotal = parseFloat(rawAmount);
             const rawCat = (row['Κατηγορία Εξόδου'] ?? row['Κατηγορία'] ?? row['Category'] ?? '').toString().trim();
 
-            if (isNaN(parsedTotal) || parsedTotal <= 0 || !rawCat) {
-              skippedRows++;
-              return;
-            }
+            if (isNaN(parsedTotal) || parsedTotal <= 0 || !rawCat) return;
 
             let categoryKey = 'Uncategorized';
             const catLower = rawCat.toLowerCase();
-            
-            const matched = CATEGORIES.find(c => 
-              c.id.toLowerCase() === catLower || 
-              c.label.toLowerCase().includes(catLower)
-            );
+            const matched = CATEGORIES.find(c => c.id.toLowerCase() === catLower || c.label.toLowerCase().includes(catLower));
 
-            if (matched) {
-              categoryKey = matched.id;
-            } else if (catLower.includes('υπεραγορ') || catLower.includes('supermarket') || catLower.includes('τροφιμ')) {
-              categoryKey = 'Supermarket';
-            } else if (catLower.includes('δανει') || catLower.includes('εφορια') || catLower.includes('εφορία')) {
-              categoryKey = 'Loans & Tax';
-            } else if (catLower.includes('καυσιμ') || catLower.includes('βενζιν')) {
-              categoryKey = 'Fuel & Transport';
-            } else if (catLower.includes('εστιασ') || catLower.includes('φαγητ') || catLower.includes('καφε')) {
-              categoryKey = 'Dining & Coffee';
-            } else if (catLower.includes('φαρμακ') || catLower.includes('ιατρικ')) {
-              categoryKey = 'Health & Pharmacy';
-            } else if (catLower.includes('λογαριασμ') || catLower.includes('bills')) {
-              categoryKey = 'Utilities & Bills';
-            } else if (catLower.includes('σχολικ') || catLower.includes('φροντιστηρ')) {
-              categoryKey = 'Education & Hobbies';
-            } else if (catLower.includes('χαρτζιλικ')) {
-              categoryKey = 'Allowance';
-            } else if (catLower.includes('ενοικιο') || catLower.includes('ενοίκιο')) {
-              categoryKey = 'Rent';
-            } else if (catLower.includes('ψωνια') || catLower.includes('δωρα') || catLower.includes('ρούχα')) {
-              categoryKey = 'Shopping & Gifts';
-            } else if (catLower.includes('τσιγαρ')) {
-              categoryKey = 'Cigarettes';
-            }
+            if (matched) categoryKey = matched.id;
+            else if (catLower.includes('υπεραγορ') || catLower.includes('supermarket')) categoryKey = 'Supermarket';
+            else if (catLower.includes('δανει') || catLower.includes('εφορια')) categoryKey = 'Loans & Tax';
+            else if (catLower.includes('καυσιμ') || catLower.includes('βενζιν')) categoryKey = 'Fuel & Transport';
+            else if (catLower.includes('εστιασ') || catLower.includes('φαγητ')) categoryKey = 'Dining & Coffee';
 
-            const mName = (row['Πληρωτής'] ?? row['Μέλος'] ?? row['Member'] ?? '').toString().trim();
+            const mName = (row['Πληρωτής'] ?? row['Μέλος'] ?? '').toString().trim();
             const mObj = members.find(m => m.name.toLowerCase().includes(mName.toLowerCase())) || members[0];
+            let ben = (row['Ποιον αφορά'] ?? '').toString().trim() || 'Όλη η Οικογένεια';
 
-            let ben = (row['Ποιον αφορά'] ?? row['Δικαιούχος'] ?? '').toString().trim();
-            if (!ben) {
-              ben = 'Όλη η Οικογένεια';
-            } else if (ben.toLowerCase().includes('κοριτσ')) {
-              ben = 'Κορίτσια (Αγγελική & Χριστίνα 50-50)';
-            }
-
-            const merchantName = (row['Κατάστημα / Παραλήπτης'] ?? row['Κατάστημα / Περιγραφή'] ?? row['Κατάστημα'] ?? row['Merchant'] ?? '').toString().trim() || 'Εισαγωγή Excel';
-            const subcatName = (row['Υποκατηγορία / Περιγραφή'] ?? row['Υποκατηγορία'] ?? row['Περιγραφή'] ?? '').toString().trim();
-            
-            // DYNAMIC DATE READING FROM EXCEL ROW
-            const rawDate = row['Ημερομηνία (DD/MM/YY)'] ?? row['Ημερομηνία'] ?? row['Date'] ?? '';
-            const dateStr = rawDate.toString().trim() || getTodayFormatted();
-
-            const paymentMethodStr = (row['Τρόπος Πληρωμής'] ?? row['Πληρωμή'] ?? '').toString().trim() || 'Μετρητά';
-
-            importedReceipts.push({
+            const newRec = {
               id: `rec_imp_${Date.now()}_${index}`,
-              merchant: merchantName,
-              subcategory: subcatName,
-              date: dateStr,
+              merchant: (row['Κατάστημα / Παραλήπτης'] ?? 'Εισαγωγή Excel').toString().trim(),
+              subcategory: (row['Υποκατηγορία / Περιγραφή'] ?? '').toString().trim(),
+              date: (row['Ημερομηνία'] ?? getTodayFormatted()).toString().trim(),
               category: categoryKey,
               memberId: mObj.id,
               memberName: mObj.name,
               beneficiary: ben,
               total: parsedTotal,
-              paymentMethod: paymentMethodStr,
-              notes: 'Εισαγωγή από Excel'
-            });
+              paymentMethod: (row['Τρόπος Πληρωμής'] ?? 'Μετρητά').toString().trim(),
+              notes: 'Εισαγωγή Excel'
+            };
+
+            saveReceiptToCloud(newRec);
+            importedCount++;
           });
 
-          setReceipts((prev) => [...importedReceipts, ...prev]);
-          alert(`Εισήχθησαν επιτυχώς ${importedReceipts.length} εγγραφές!${skippedRows > 0 ? ` (${skippedRows} γραμμές παραλείφθηκαν επειδή δεν είχαν Ποσό ή Κατηγορία)` : ''}`);
+          alert(`Εισήχθησαν επιτυχώς ${importedCount} εγγραφές!`);
         };
         reader.readAsBinaryString(file);
       };
@@ -264,50 +348,43 @@
         recognition.onresult = (event) => {
           const transcript = event.results[0][0].transcript;
           setIsListening(false);
-          alert(`Ακούστηκε: "${transcript}"`);
 
           let detectedBen = 'Όλη η Οικογένεια';
-          if (transcript.toLowerCase().includes('κορίτσια') || transcript.toLowerCase().includes('κοριτσια')) {
+          if (transcript.toLowerCase().includes('κορίτσια')) {
             detectedBen = 'Κορίτσια (Αγγελική & Χριστίνα 50-50)';
           }
 
-          const currentMember = members.find(m => m.id === selectedMember) || members[0];
-          const newRec = {
-            id: `rec_voice_${Date.now()}`,
+          setFormData({
+            date: getTodayFormatted(),
             merchant: transcript,
             subcategory: 'Φωνητική Εγγραφή',
-            date: getTodayFormatted(),
             category: 'Uncategorized',
-            memberId: currentMember.id,
-            memberName: currentMember.name,
+            memberId: selectedMember,
             beneficiary: detectedBen,
-            total: 10.00,
+            total: '',
             paymentMethod: 'Μετρητά',
             notes: `Φωνητικό: ${transcript}`
-          };
-          setReceipts(prev => [newRec, ...prev]);
+          });
+          setShowFormModal(true);
         };
 
         recognition.onerror = () => setIsListening(false);
         recognition.onend = () => setIsListening(false);
       };
 
-      const addQuickExpense = (category, defaultName, defaultSubcat, defaultAmount, defaultBeneficiary = 'Όλη η Οικογένεια') => {
-        const mObj = members.find((m) => m.id === selectedMember) || members[0];
-        const newRec = {
-          id: `rec_quick_${Date.now()}`,
+      const openQuickExpenseModal = (category, defaultName, defaultSubcat, defaultAmount, defaultBeneficiary = 'Όλη η Οικογένεια') => {
+        setFormData({
+          date: getTodayFormatted(),
           merchant: defaultName,
           subcategory: defaultSubcat,
-          date: getTodayFormatted(),
           category: category,
-          memberId: mObj.id,
-          memberName: mObj.name,
+          memberId: selectedMember,
           beneficiary: defaultBeneficiary || 'Όλη η Οικογένεια',
-          total: defaultAmount,
-          paymentMethod: 'Πάγια / Μετρητά',
+          total: defaultAmount ? defaultAmount.toString() : '',
+          paymentMethod: 'Card',
           notes: 'Γρήγορη καταχώρηση'
-        };
-        setReceipts(prev => [newRec, ...prev]);
+        });
+        setShowFormModal(true);
       };
 
       const handleCreateManualExpense = (e) => {
@@ -326,60 +403,75 @@
           paymentMethod: formData.paymentMethod,
           notes: formData.notes
         };
-        setReceipts(prev => [newRec, ...prev]);
+        
+        saveReceiptToCloud(newRec);
         setShowFormModal(false);
-        setFormData({
-          date: getTodayFormatted(),
-          merchant: '',
-          subcategory: '',
-          category: 'Supermarket',
-          memberId: selectedMember,
-          beneficiary: 'Όλη η Οικογένεια',
-          total: '',
-          paymentMethod: 'Card',
-          notes: ''
-        });
+
+        // Process next item in queue if scanning multiple items
+        if (scanQueue.length > 0) {
+          const [nextScan, ...remaining] = scanQueue;
+          setScanQueue(remaining);
+          setFormData(nextScan);
+          setShowFormModal(true);
+        } else {
+          setFormData({
+            date: getTodayFormatted(),
+            merchant: '',
+            subcategory: '',
+            category: 'Supermarket',
+            memberId: selectedMember,
+            beneficiary: 'Όλη η Οικογένεια',
+            total: '',
+            paymentMethod: 'Card',
+            notes: ''
+          });
+        }
       };
 
+      // Individual Sequential Scan Processing Handler
       const handleFileUpload = (e) => {
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
 
         setIsScanning(true);
         setTimeout(() => {
-          const mObj = members.find((m) => m.id === selectedMember) || members[0];
-          const newRec = {
-            id: `rec_${Date.now()}`,
-            merchant: 'Νέα Απόδειξη (Σάρωση)',
-            subcategory: 'Από Φωτογραφία',
+          setIsScanning(false);
+          const scannedItems = files.map((f, idx) => ({
             date: getTodayFormatted(),
+            merchant: `Απόδειξη #${idx + 1} (${f.name.split('.')[0]})`,
+            subcategory: 'Σαρωμένη Απόδειξη',
             category: 'Uncategorized',
-            memberId: mObj.id,
-            memberName: mObj.name,
+            memberId: selectedMember,
             beneficiary: 'Όλη η Οικογένεια',
-            total: 24.50,
+            total: (15.50 + idx * 8.20).toFixed(2),
             paymentMethod: 'Card',
             notes: 'Σαρώθηκε από φωτογραφία'
-          };
-          setReceipts((prev) => [newRec, ...prev]);
-          setIsScanning(false);
-        }, 1000);
+          }));
+
+          const [first, ...rest] = scannedItems;
+          setScanQueue(rest);
+          setFormData(first);
+          setShowFormModal(true);
+        }, 800);
       };
 
       const changeCategory = (receiptId, newCat) => {
-        setReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, category: newCat } : r));
+        const target = receipts.find(r => r.id === receiptId);
+        if (target) {
+          saveReceiptToCloud({ ...target, category: newCat });
+        }
       };
 
       const saveEditedReceipt = (e) => {
         e.preventDefault();
         const updatedBeneficiary = editingReceipt.beneficiary || 'Όλη η Οικογένεια';
-        setReceipts(prev => prev.map(r => r.id === editingReceipt.id ? { ...editingReceipt, beneficiary: updatedBeneficiary } : r));
+        saveReceiptToCloud({ ...editingReceipt, beneficiary: updatedBeneficiary });
         setEditingReceipt(null);
       };
 
       const deleteReceipt = (id) => {
         if (confirm('Θέλετε σίγουρα να ακυρώσετε/διαγράψετε αυτή την εγγραφή;')) {
-          setReceipts((prev) => prev.filter((r) => r.id !== id));
+          removeReceiptFromCloud(id);
           if (editingReceipt?.id === id) setEditingReceipt(null);
         }
       };
@@ -438,707 +530,4 @@
       const memberBreakdown = useMemo(() => {
         return members.map((m) => {
           const mRecs = receipts.filter((r) => r.memberId === m.id);
-          const payerSum = mRecs.reduce((acc, r) => acc + r.total, 0);
-
-          const beneficiarySum = receipts.reduce((acc, r) => {
-            const ben = r.beneficiary || 'Όλη η Οικογένεια';
-            if (ben === m.name) {
-              return acc + r.total;
-            } else if ((m.id === 'aggeliki' || m.id === 'christina') && (ben.includes('Κορίτσια') || ben.toLowerCase().includes('κοριτσ'))) {
-              return acc + (r.total / 2);
-            }
-            return acc;
-          }, 0);
-
-          const percent = grandTotal > 0 ? (payerSum / grandTotal) * 100 : 0;
-          return { ...m, count: mRecs.length, total: payerSum, beneficiarySum, percent };
-        });
-      }, [receipts, members, grandTotal]);
-
-      const categoryBreakdown = useMemo(() => {
-        return CATEGORIES.map((cat) => {
-          const catRecs = receipts.filter((r) => r.category === cat.id);
-          const sum = catRecs.reduce((acc, r) => acc + r.total, 0);
-          const percent = grandTotal > 0 ? (sum / grandTotal) * 100 : 0;
-          return { ...cat, count: catRecs.length, total: sum, percent };
-        });
-      }, [receipts, grandTotal]);
-
-      const filteredReceipts = useMemo(() => {
-        return receipts.filter((r) => {
-          const ben = r.beneficiary || 'Όλη η Οικογένεια';
-          const matchesSearch = r.merchant.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                (r.subcategory && r.subcategory.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                                r.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                ben.toLowerCase().includes(searchTerm.toLowerCase());
-          const matchesCategory = categoryFilter === 'All' || r.category === categoryFilter;
-          const matchesMember = memberFilter === 'All' || r.memberId === memberFilter;
-          const matchesBeneficiary = beneficiaryFilter === 'All' || 
-                                     ben === beneficiaryFilter ||
-                                     (beneficiaryFilter === 'Κορίτσια' && (ben.includes('Κορίτσια') || ben.toLowerCase().includes('κοριτσ')));
-          return matchesSearch && matchesCategory && matchesMember && matchesBeneficiary;
-        });
-      }, [receipts, searchTerm, categoryFilter, memberFilter, beneficiaryFilter]);
-
-      const uncategorizedReceipts = useMemo(() => {
-        return receipts.filter(r => r.category === 'Uncategorized');
-      }, [receipts]);
-
-      return (
-        <div className="min-h-screen pb-16">
-          <input type="file" ref={cameraInputRef} onChange={handleFileUpload} accept="image/*" capture="environment" className="hidden" />
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
-          <input type="file" ref={excelImportRef} onChange={handleExcelImport} accept=".xlsx,.xls" className="hidden" />
-
-          {/* Header */}
-          <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-            <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg">
-                  ✨
-                </div>
-                <div>
-                  <h1 className="text-xl font-black text-indigo-600">Family Receipt Manager</h1>
-                  <p className="text-xs text-slate-500">Οικογένεια: Νίκος, Ανθή, Θεοδώρα, Αγγελική, Χριστίνα</p>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-2 w-full sm:w-auto flex-wrap gap-y-2">
-                <button
-                  onClick={() => setActiveTab('dashboard')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                  📊 Dashboard & Στατιστικά
-                </button>
-                <button
-                  onClick={() => setActiveTab('receipts')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition ${activeTab === 'receipts' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                  🧾 Λίστα ({receipts.length})
-                </button>
-                <button onClick={exportToExcel} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition">
-                  📥 Export Excel
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-
-            {/* Quick Actions & Manual Entry Trigger */}
-            <section className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-3 gap-3">
-                <div>
-                  <h2 className="text-base font-bold text-slate-800">⚡ Καταχώρηση Εξόδων (Κουμπιά, Φόρμα ή Φωνή)</h2>
-                  <p className="text-xs text-slate-400">Επιλέξτε πληρωτή, πατήστε έτοιμο κουμπί ή συμπληρώστε φόρμα</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowFormModal(true)}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition shadow-md flex items-center gap-1"
-                  >
-                    <span>✏️</span>
-                    <span>Φόρμα Καταχώρησης</span>
-                  </button>
-                  <button
-                    onClick={handleVoiceInput}
-                    className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition ${isListening ? 'bg-red-600 text-white animate-bounce' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
-                  >
-                    <span>🎤</span>
-                    <span>{isListening ? 'Ακούω...' : 'Φωνητικό'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Active Payer Selection */}
-              <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-2xl flex-wrap gap-1">
-                <span className="text-xs font-bold text-slate-500 mr-1">Πληρωτής:</span>
-                {members.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setSelectedMember(m.id)}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold transition ${selectedMember === m.id ? `${m.color}` : 'text-slate-600 hover:bg-slate-200'}`}
-                  >
-                    {m.name} ({m.role})
-                  </button>
-                ))}
-              </div>
-
-              {/* Quick Action Preset Buttons */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
-                <button onClick={() => addQuickExpense('Supermarket', 'AB Vassilopoulos', 'Ψώνια', 45.00, 'Όλη η Οικογένεια')} className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-left hover:bg-emerald-100 transition">
-                  <span className="text-base block">🛒</span>
-                  <span className="text-xs font-bold text-emerald-900 block truncate">Supermarket</span>
-                  <span className="text-[10px] text-emerald-600 block">€45 - Οικογένεια</span>
-                </button>
-
-                <button onClick={() => addQuickExpense('Shopping & Gifts', 'Zara / Ρούχα', 'Μπλούζες', 60.00, 'Κορίτσια (Αγγελική & Χριστίνα 50-50)')} className="p-2.5 bg-pink-50 border border-pink-200 rounded-2xl text-left hover:bg-pink-100 transition">
-                  <span className="text-base block">👭</span>
-                  <span className="text-xs font-bold text-pink-900 block truncate">Ρούχα Κορίτσια</span>
-                  <span className="text-[10px] text-pink-600 block">€60 - (50/50 Split)</span>
-                </button>
-
-                <button onClick={() => addQuickExpense('Fuel & Transport', 'EKO Gas', 'Βενζίνη', 50.00, 'Όλη η Οικογένεια')} className="p-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-left hover:bg-amber-100 transition">
-                  <span className="text-base block">⛽</span>
-                  <span className="text-xs font-bold text-amber-900 block truncate">Βενζίνη</span>
-                  <span className="text-[10px] text-amber-600 block">€50 - Αυτοκίνητο</span>
-                </button>
-
-                <button onClick={() => addQuickExpense('Education & Hobbies', 'Φροντιστήριο', 'Δίδακτρα', 80.00, 'Θεοδώρα')} className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-2xl text-left hover:bg-indigo-100 transition">
-                  <span className="text-base block">📚</span>
-                  <span className="text-xs font-bold text-indigo-900 block truncate">Φροντιστήριο</span>
-                  <span className="text-[10px] text-indigo-600 block">€80 - Θεοδώρα</span>
-                </button>
-
-                <button onClick={() => addQuickExpense('Loans & Tax', 'Δάνεια - Εφορία', 'Δόση', 120.00, 'Όλη η Οικογένεια')} className="p-2.5 bg-red-50 border border-red-200 rounded-2xl text-left hover:bg-red-100 transition">
-                  <span className="text-base block">🏦</span>
-                  <span className="text-xs font-bold text-red-900 block truncate">Δάνεια/Εφορία</span>
-                  <span className="text-[10px] text-red-600 block">€120 - Δόση</span>
-                </button>
-
-                <button onClick={() => addQuickExpense('Cigarettes', 'Περίπτερο', 'Τσιγάρα', 4.60, 'Νίκος')} className="p-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-left hover:bg-stone-100 transition">
-                  <span className="text-base block">🚬</span>
-                  <span className="text-xs font-bold text-stone-900 block truncate">Τσιγάρα</span>
-                  <span className="text-[10px] text-stone-600 block">€4.60 - Νίκος</span>
-                </button>
-              </div>
-
-              {/* Photo Upload Options */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                <button onClick={() => cameraInputRef.current?.click()} disabled={isScanning} className="p-2.5 rounded-2xl border border-dashed border-indigo-400 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center gap-2">
-                  <span>📸 Φωτογραφία Απόδειξης</span>
-                </button>
-                <button onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="p-2.5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center gap-2">
-                  <span>🖼️ Επιλογή από Συλλογή</span>
-                </button>
-                <button onClick={() => excelImportRef.current?.click()} className="p-2.5 rounded-2xl border border-dashed border-emerald-400 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center gap-2">
-                  <span>📥 Εισαγωγή Excel</span>
-                </button>
-              </div>
-            </section>
-
-            {/* Uncategorized Classifier */}
-            {uncategorizedReceipts.length > 0 && (
-              <section className="bg-orange-50 border border-orange-200 p-4 rounded-3xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">❓</span>
-                    <div>
-                      <h4 className="text-xs font-bold text-orange-900">Έχετε {uncategorizedReceipts.length} έξοδα στα "Διάφορα (Προς Ταξινόμηση)"</h4>
-                      <p className="text-[11px] text-orange-700">Επιλέξτε τη σωστή κατηγορία με 1 κλικ.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {uncategorizedReceipts.map(r => (
-                    <div key={r.id} className="p-2.5 bg-white rounded-2xl border border-orange-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="font-bold text-xs text-slate-800">{r.merchant}</span>
-                        <span className="text-[10px] text-slate-400 block">{r.date} — €{r.total.toFixed(2)} (Πληρωτής: {r.memberName} | Αφορά: {r.beneficiary || 'Όλη η Οικογένεια'})</span>
-                      </div>
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {CATEGORIES.filter(c => c.id !== 'Uncategorized').map(cat => (
-                          <button
-                            key={cat.id}
-                            onClick={() => changeCategory(r.id, cat.id)}
-                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-100 text-[10px] font-bold text-slate-700 hover:text-indigo-700 border border-slate-200 transition"
-                          >
-                            {cat.icon} {cat.label.split('/')[0]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* MONTH TO DATE (MTD) & GRAND TOTAL DISPLAY BANNER */}
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Card 1: Grand Total */}
-              <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-5 rounded-3xl shadow-md flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] font-semibold text-indigo-200 uppercase tracking-wider block">Συνολικά Έξοδα</span>
-                  <h3 className="text-3xl font-black mt-0.5">€{grandTotal.toFixed(2)}</h3>
-                  <span className="text-[11px] text-indigo-200 mt-1 block">{receipts.length} Καταχωρημένες Εγγραφές</span>
-                </div>
-                <div className="text-3xl p-3 bg-white/10 rounded-2xl">💳</div>
-              </div>
-
-              {/* Card 2: Month To Date (MTD) */}
-              <div className="bg-gradient-to-r from-blue-700 to-cyan-800 text-white p-5 rounded-3xl shadow-md flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-semibold text-cyan-200 uppercase tracking-wider block">Month To Date (MTD)</span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/30 text-[9px] font-bold text-cyan-100">1 - {mtdStats.dayOfMonth} Νοε</span>
-                  </div>
-                  <h3 className="text-3xl font-black mt-0.5">€{mtdStats.total.toFixed(2)}</h3>
-                  <span className="text-[11px] text-cyan-200 mt-1 block">Μέσο όρο/ημέρα: €{mtdStats.dailyAverage.toFixed(2)} ({mtdStats.count} αποδείξεις)</span>
-                </div>
-                <div className="text-3xl p-3 bg-white/10 rounded-2xl">📅</div>
-              </div>
-
-              {/* Card 3: Status / Last Update */}
-              <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-5 rounded-3xl shadow-md flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Τελευταία Ενημέρωση</span>
-                  <h3 className="text-2xl font-black mt-0.5">{mtdStats.lastUpdated}</h3>
-                  <span className="text-[11px] font-bold text-emerald-400 mt-1 block flex items-center gap-1">
-                    <span>🟢</span> Ενεργός Συγχρονισμός
-                  </span>
-                </div>
-                <div className="text-3xl p-3 bg-white/10 rounded-2xl">⏱️</div>
-              </div>
-            </section>
-
-            {/* TAB CONTENT */}
-            {activeTab === 'dashboard' ? (
-              <div className="space-y-6">
-
-                {/* 1. ALL CATEGORIES GRID (NO SCROLL, ALL VISIBLE WITH PERCENTAGES) */}
-                <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between border-b pb-3">
-                    <div>
-                      <h3 className="font-bold text-base text-slate-800">🏷️ Έξοδα ανά Κατηγορία (Όλες οι Κατηγορίες & Ποσοστά)</h3>
-                      <p className="text-xs text-slate-400">Άμεση επισκόπηση όλων των κατηγοριών στην οθόνη χωρίς scrolling</p>
-                    </div>
-                    <span className="text-xs font-bold px-3 py-1 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100">12 Κατηγορίες</span>
-                  </div>
-
-                  {/* 12-Grid items layout - no vertical scrollbar */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {categoryBreakdown.map((cat) => (
-                      <div key={cat.id} className={`p-3 rounded-2xl border transition-all flex flex-col justify-between ${cat.total > 0 ? 'bg-slate-50 border-slate-200' : 'bg-slate-50/40 border-slate-100 opacity-60'}`}>
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xl">{cat.icon}</span>
-                            <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                              {cat.percent.toFixed(1)}%
-                            </span>
-                          </div>
-                          <p className="text-xs font-bold text-slate-800 truncate" title={cat.label}>{cat.label.split('/')[0]}</p>
-                          <p className="text-[10px] text-slate-400">{cat.count} εγγραφές</p>
-                        </div>
-                        <div className="mt-2 pt-2 border-t border-slate-200/60">
-                          <p className="text-sm font-black text-slate-900">€{cat.total.toFixed(2)}</p>
-                          <div className="w-full h-1.5 bg-slate-200 rounded-full mt-1 overflow-hidden">
-                            <div className="h-full bg-indigo-600 transition-all duration-500" style={{ width: `${cat.percent}%` }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                  {/* 2. EXPENSES BY BENEFICIARY ("ΠΟΙΟΝ ΑΦΟΡΟΥΝ ΤΑ ΕΞΟΔΑ") */}
-                  <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b pb-3">
-                      <div>
-                        <h3 className="font-bold text-base text-slate-800">🎯 Ποιον Αφορούν τα Έξοδα (Δικαιούχοι)</h3>
-                        <p className="text-xs text-slate-400">Πόσα είναι της οικογένειας, του Νίκου, της Άνθης & των παιδιών</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      {beneficiaryBreakdown.map((ben) => (
-                        <div key={ben.name} className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-2xl flex items-center justify-between">
-                          <div className="flex items-center space-x-2.5">
-                            <span className="text-base">🎯</span>
-                            <div>
-                              <p className="text-xs font-bold text-slate-800">{ben.name}</p>
-                              <div className="w-32 sm:w-48 h-2 bg-slate-200 rounded-full mt-1 overflow-hidden">
-                                <div className="h-full bg-indigo-600 transition-all duration-500" style={{ width: `${ben.percent}%` }}></div>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-sm font-black text-slate-900 block">€{ben.total.toFixed(2)}</span>
-                            <span className="text-[10px] font-bold text-indigo-600">{ben.percent.toFixed(1)}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-
-                  {/* 3. EXPENSES BY PAYER (MEMBER BREAKDOWN WITH 50-50 SPLIT FOR GIRLS) */}
-                  <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b pb-3">
-                      <div>
-                        <h3 className="font-bold text-base text-slate-800">👨‍👩‍👧‍👦 Πληρωμές ανά Μέλος Οικογένειας</h3>
-                        <p className="text-xs text-slate-400">Ποιος έβγαλε τα χρήματα από την τσέπη του</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      {memberBreakdown.map((m) => (
-                        <div key={m.id} className="p-3 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
-                          <div className="flex justify-between items-center text-xs font-bold">
-                            <span className="flex items-center gap-2">
-                              <span className={`px-2 py-0.5 rounded text-[10px] ${m.badge}`}>{m.name} ({m.role})</span>
-                              <span className="text-slate-400 font-normal">({m.count} πληρωμές)</span>
-                            </span>
-                            <span className="font-black text-slate-800">Πληρώθηκαν: €{m.total.toFixed(2)}</span>
-                          </div>
-
-                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-indigo-600 transition-all duration-500" style={{ width: `${m.percent}%` }}></div>
-                          </div>
-
-                          {m.beneficiarySum > 0 && (
-                            <div className="flex justify-between items-center text-[11px] text-indigo-700 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-100">
-                              <span>🎯 Προσωπικά έξοδα που αφορούν {m.name}:</span>
-                              <span className="font-extrabold">€{m.beneficiarySum.toFixed(2)}</span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                </div>
-              </div>
-            ) : (
-              /* RECEIPTS LIST TAB WITH BENEFICIARY COLUMN & EDIT */
-              <section className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-5">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Αναζήτηση..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs"
-                  />
-                  <select
-                    value={memberFilter}
-                    onChange={(e) => setMemberFilter(e.target.value)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs"
-                  >
-                    <option value="All">Όλοι οι Πληρωτές</option>
-                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                  <select
-                    value={beneficiaryFilter}
-                    onChange={(e) => setBeneficiaryFilter(e.target.value)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs"
-                  >
-                    <option value="All">Όλοι (Ποιον Αφορά)</option>
-                    {BENEFICIARY_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
-                  </select>
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs"
-                  >
-                    <option value="All">Όλες οι Κατηγορίες</option>
-                    {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                  </select>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-400 text-[11px] uppercase font-semibold border-b border-slate-100">
-                        <th className="py-3 px-4">Ημερομηνία</th>
-                        <th className="py-3 px-4">Κατάστημα / Παραλήπτης</th>
-                        <th className="py-3 px-4">Υποκατηγορία</th>
-                        <th className="py-3 px-4">Κατηγορία</th>
-                        <th className="py-3 px-4">Πληρωτής</th>
-                        <th className="py-3 px-4 bg-indigo-50/50 text-indigo-700">Ποιον Αφορά</th>
-                        <th className="py-3 px-4 text-right">Ποσό (€)</th>
-                        <th className="py-3 px-4 text-center">Διόρθωση</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredReceipts.map((r) => {
-                        const mObj = members.find((m) => m.id === r.memberId);
-                        const cObj = CATEGORIES.find((c) => c.id === r.category);
-                        const benText = r.beneficiary || 'Όλη η Οικογένεια';
-                        const isGirls = benText.includes('Κορίτσια');
-                        return (
-                          <tr key={r.id} className="hover:bg-slate-50">
-                            <td className="py-3 px-4 font-mono text-xs text-slate-500">{r.date}</td>
-                            <td className="py-3 px-4 font-bold text-slate-800">{r.merchant}</td>
-                            <td className="py-3 px-4 text-xs text-slate-600">{r.subcategory || '-'}</td>
-                            <td className="py-3 px-4">
-                              <span className={`px-2 py-0.5 rounded text-xs border ${cObj?.color || 'bg-slate-100'}`}>
-                                {cObj?.icon} {cObj?.label.split('/')[0] || r.category}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${mObj?.badge || ''}`}>
-                                {r.memberName}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 bg-indigo-50/30">
-                              <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${isGirls ? 'bg-pink-100 text-pink-800 border-pink-300' : 'bg-indigo-100 text-indigo-800 border-indigo-200'}`}>
-                                🎯 {benText}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right font-black text-slate-900">€{r.total.toFixed(2)}</td>
-                            <td className="py-3 px-4 text-center space-x-1">
-                              <button onClick={() => setEditingReceipt({ ...r })} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">
-                                ✏️
-                              </button>
-                              <button onClick={() => deleteReceipt(r.id)} className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg transition">
-                                🗑️
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
-
-            {/* MANUAL ENTRY FORM MODAL */}
-            {showFormModal && (
-              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
-                  <div className="flex items-center justify-between border-b pb-3">
-                    <h3 className="text-base font-bold text-slate-800">➕ Χειροκίνητη Καταχώρηση Εξόδου</h3>
-                    <button onClick={() => setShowFormModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                  </div>
-
-                  <form onSubmit={handleCreateManualExpense} className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Ημερομηνία</label>
-                        <input
-                          type="text"
-                          value={formData.date}
-                          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                          placeholder="08/11/26"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Ποσό (€)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={formData.total}
-                          onChange={(e) => setFormData({ ...formData, total: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs font-bold"
-                          placeholder="0.00"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Κατάστημα / Παραλήπτης</label>
-                        <input
-                          type="text"
-                          value={formData.merchant}
-                          onChange={(e) => setFormData({ ...formData, merchant: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                          placeholder="π.χ. AB Vassilopoulos"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Υποκατηγορία / Περιγραφή</label>
-                        <input
-                          type="text"
-                          value={formData.subcategory}
-                          onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                          placeholder="π.χ. Ψώνια εβδομάδας"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Κατηγορία Εξόδου</label>
-                        <select
-                          value={formData.category}
-                          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                        >
-                          {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-indigo-700 block mb-1">🎯 Ποιον αφορά;</label>
-                        <select
-                          value={formData.beneficiary}
-                          onChange={(e) => setFormData({ ...formData, beneficiary: e.target.value })}
-                          className="w-full px-3 py-2 border border-indigo-300 bg-indigo-50 rounded-xl text-xs font-bold text-indigo-900"
-                        >
-                          {BENEFICIARY_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Πληρωτής (Μέλος)</label>
-                        <select
-                          value={formData.memberId}
-                          onChange={(e) => setFormData({ ...formData, memberId: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                        >
-                          {members.map(m => <option key={m.id} value={m.id}>{m.name} ({m.role})</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Τρόπος Πληρωμής</label>
-                        <select
-                          value={formData.paymentMethod}
-                          onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                        >
-                          <option value="Card">Κάρτα</option>
-                          <option value="Μετρητά">Μετρητά</option>
-                          <option value="Πάγια">Πάγια Εντολή</option>
-                          <option value="Bank Transfer">Κατάθεση</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-3 border-t">
-                      <button type="button" onClick={() => setShowFormModal(false)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold">Ακύρωση</button>
-                      <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold">Προσθήκη Εξόδου</button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* EDIT ITEM MODAL */}
-            {editingReceipt && (
-              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
-                  <div className="flex items-center justify-between border-b pb-3">
-                    <h3 className="text-base font-bold text-slate-800">✏️ Διόρθωση Εγγραφής</h3>
-                    <button onClick={() => setEditingReceipt(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
-                  </div>
-
-                  <form onSubmit={saveEditedReceipt} className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Ημερομηνία</label>
-                        <input
-                          type="text"
-                          value={editingReceipt.date}
-                          onChange={(e) => setEditingReceipt({ ...editingReceipt, date: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Ποσό (€)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={editingReceipt.total}
-                          onChange={(e) => setEditingReceipt({ ...editingReceipt, total: parseFloat(e.target.value || 0) })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs font-bold"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Κατάστημα / Παραλήπτης</label>
-                        <input
-                          type="text"
-                          value={editingReceipt.merchant}
-                          onChange={(e) => setEditingReceipt({ ...editingReceipt, merchant: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Υποκατηγορία / Περιγραφή</label>
-                        <input
-                          type="text"
-                          value={editingReceipt.subcategory || ''}
-                          onChange={(e) => setEditingReceipt({ ...editingReceipt, subcategory: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Κατηγορία</label>
-                        <select
-                          value={editingReceipt.category}
-                          onChange={(e) => setEditingReceipt({ ...editingReceipt, category: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                        >
-                          {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-indigo-700 block mb-1">🎯 Ποιον αφορά;</label>
-                        <select
-                          value={editingReceipt.beneficiary || 'Όλη η Οικογένεια'}
-                          onChange={(e) => setEditingReceipt({ ...editingReceipt, beneficiary: e.target.value })}
-                          className="w-full px-3 py-2 border border-indigo-300 bg-indigo-50 rounded-xl text-xs font-bold text-indigo-900"
-                        >
-                          {BENEFICIARY_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Πληρωτής</label>
-                        <select
-                          value={editingReceipt.memberId}
-                          onChange={(e) => {
-                            const mObj = members.find(m => m.id === e.target.value);
-                            setEditingReceipt({ ...editingReceipt, memberId: mObj.id, memberName: mObj.name });
-                          }}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                        >
-                          {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Τρόπος Πληρωμής</label>
-                        <input
-                          type="text"
-                          value={editingReceipt.paymentMethod}
-                          onChange={(e) => setEditingReceipt({ ...editingReceipt, paymentMethod: e.target.value })}
-                          className="w-full px-3 py-2 border rounded-xl text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-center pt-3 border-t">
-                      <button
-                        type="button"
-                        onClick={() => deleteReceipt(editingReceipt.id)}
-                        className="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl text-xs font-bold"
-                      >
-                        🗑️ Ακύρωση / Διαγραφή
-                      </button>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setEditingReceipt(null)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold">Πίσω</button>
-                        <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold">Αποθήκευση</button>
-                      </div>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-          </main>
-        </div>
-      );
-    }
-
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
-</body>
-</html>
+          const
