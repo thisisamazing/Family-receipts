@@ -11,9 +11,7 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <!-- Babel Compiler for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- SheetJS for Excel Exports -->
+  <!-- SheetJS for Excel Exports & Imports -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans">
@@ -23,49 +21,108 @@
     const { useState, useEffect, useMemo, useRef } = React;
 
     const DEFAULT_MEMBERS = [
-      { id: 'dad', name: 'Μπαμπάς', role: 'Γονέας', color: 'bg-blue-500 text-white', badge: 'bg-blue-100 text-blue-800 border-blue-300' },
-      { id: 'mom', name: 'Μαμά', role: 'Γονέας', color: 'bg-rose-500 text-white', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
+      { id: 'dad', name: 'Μπαμπάς', role: 'Γονέας', color: 'bg-blue-600 text-white', badge: 'bg-blue-100 text-blue-800 border-blue-300' },
+      { id: 'mom', name: 'Μαμά', role: 'Γονέας', color: 'bg-rose-600 text-white', badge: 'bg-rose-100 text-rose-800 border-rose-300' },
       { id: 'child1', name: 'Παιδί 1 (Αλέξανδρος)', role: 'Παιδί', color: 'bg-amber-500 text-white', badge: 'bg-amber-100 text-amber-800 border-amber-300' },
-      { id: 'child2', name: 'Παιδί 2 (Μαρία)', role: 'Παιδί', color: 'bg-purple-500 text-white', badge: 'bg-purple-100 text-purple-800 border-purple-300' }
+      { id: 'child2', name: 'Παιδί 2 (Μαρία)', role: 'Παιδί', color: 'bg-purple-600 text-white', badge: 'bg-purple-100 text-purple-800 border-purple-300' }
     ];
 
     const CATEGORIES = [
-      { id: 'Supermarket', label: 'Supermarket / Τρόφιμα', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
-      { id: 'Fuel & Transport', label: 'Fuel & Transport / Καύσιμα', color: 'bg-amber-100 text-amber-800 border-amber-300' },
-      { id: 'Dining & Coffee', label: 'Dining & Coffee / Εστίαση', color: 'bg-rose-100 text-rose-800 border-rose-300' },
-      { id: 'Business & Office', label: 'Business & Office / Γραφείο', color: 'bg-blue-100 text-blue-800 border-blue-300' },
-      { id: 'Health & Pharmacy', label: 'Health & Pharmacy / Φαρμακείο', color: 'bg-teal-100 text-teal-800 border-teal-300' },
-      { id: 'Utilities & Bills', label: 'Utilities & Bills / Λογαριασμοί', color: 'bg-purple-100 text-purple-800 border-purple-300' },
-      { id: 'Education & Hobbies', label: 'Education & Hobbies / Σχολικά', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
-      { id: 'Entertainment & Leisure', label: 'Entertainment & Leisure / Ψυχαγωγία', color: 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-300' },
-      { id: 'Other Expenses', label: 'Other Expenses / Διάφορα', color: 'bg-gray-100 text-gray-800 border-gray-300' }
+      { id: 'Supermarket', label: 'Supermarket / Τρόφιμα', icon: '🛒', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+      { id: 'Fuel & Transport', label: 'Καύσιμο Αυτοκινήτου', icon: '⛽', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+      { id: 'Dining & Coffee', label: 'Εστίαση / Φαγητό Έξω', icon: '🍔', color: 'bg-rose-100 text-rose-800 border-rose-300' },
+      { id: 'Health & Pharmacy', label: 'Φάρμακα / Ιατρικά', icon: '💊', color: 'bg-teal-100 text-teal-800 border-teal-300' },
+      { id: 'Utilities & Bills', label: 'Utilities & Bills / Λογαριασμοί', icon: '⚡', color: 'bg-purple-100 text-purple-800 border-purple-300' },
+      { id: 'Education & Hobbies', label: 'Σχολικά / Φροντιστήρια', icon: '📚', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
+      { id: 'Allowance', label: 'Χαρτζιλίκι', icon: '💵', color: 'bg-green-100 text-green-800 border-green-300' },
+      { id: 'Rent', label: 'Ενοίκιο', icon: '🏠', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+      { id: 'Shopping & Gifts', label: 'Ψώνια & Δώρα', icon: '🎁', color: 'bg-pink-100 text-pink-800 border-pink-300' },
+      { id: 'Cigarettes', label: 'Τσιγάρα', icon: '🚬', color: 'bg-stone-100 text-stone-800 border-stone-300' },
+      { id: 'Uncategorized', label: 'Διάφορα (Προς Ταξινόμηση)', icon: '❓', color: 'bg-orange-100 text-orange-800 border-orange-300' }
     ];
 
     const INITIAL_RECEIPTS = [
-      { id: 'rec_1', merchant: 'AB Vassilopoulos Supermarket', date: '2026-11-02', category: 'Supermarket', memberId: 'mom', memberName: 'Μαμά', total: 48.65, tax: 6.20, paymentMethod: 'Card (Visa ****4821)', notes: 'Εβδομαδιαία ψώνια σπιτιού' },
-      { id: 'rec_2', merchant: 'EKO Gas Station', date: '2026-11-04', category: 'Fuel & Transport', memberId: 'dad', memberName: 'Μπαμπάς', total: 55.00, tax: 10.65, paymentMethod: 'Card (Mastercard ****1102)', notes: 'Βενζίνη αυτοκινήτου' },
-      { id: 'rec_3', merchant: 'Public Store / Βιβλία Σχολείου', date: '2026-11-05', category: 'Education & Hobbies', memberId: 'child1', memberName: 'Παιδί 1 (Αλέξανδρος)', total: 34.80, tax: 2.10, paymentMethod: 'Cash', notes: 'Σχολικά είδη' }
+      { id: 'rec_1', merchant: 'AB Vassilopoulos', date: '2026-11-01', category: 'Supermarket', memberId: 'mom', memberName: 'Μαμά', total: 48.65, tax: 6.20, paymentMethod: 'Card', notes: 'Ψώνια εβδομάδας' },
+      { id: 'rec_2', merchant: 'EKO Gas Station', date: '2026-11-02', category: 'Fuel & Transport', memberId: 'dad', memberName: 'Μπαμπάς', total: 55.00, tax: 10.65, paymentMethod: 'Card', notes: 'Βενζίνη' },
+      { id: 'rec_3', merchant: 'Φροντιστήριο Αγγλικών', date: '2026-11-03', category: 'Education & Hobbies', memberId: 'child1', memberName: 'Παιδί 1 (Αλέξανδρος)', total: 80.00, tax: 0, paymentMethod: 'Bank Transfer', notes: 'Δίδακτρα Νοεμβρίου' },
+      { id: 'rec_4', merchant: 'Ενοίκιο Σπιτιού', date: '2026-11-04', category: 'Rent', memberId: 'dad', memberName: 'Μπαμπάς', total: 450.00, tax: 0, paymentMethod: 'Direct Order / Πάγια', notes: 'Μηνιαίο ενοίκιο' },
+      { id: 'rec_5', merchant: 'Χαρτζιλίκι Αλέξανδρου', date: '2026-11-05', category: 'Allowance', memberId: 'child1', memberName: 'Παιδί 1 (Αλέξανδρος)', total: 15.00, tax: 0, paymentMethod: 'Cash', notes: 'Εβδομαδιαίο χαρτζιλίκι' },
+      { id: 'rec_6', merchant: 'Περίπτερο / Τσιγάρα', date: '2026-11-06', category: 'Cigarettes', memberId: 'dad', memberName: 'Μπαμπάς', total: 4.60, tax: 0, paymentMethod: 'Cash', notes: '' },
+      { id: 'rec_7', merchant: 'Pharmacy Central', date: '2026-11-07', category: 'Health & Pharmacy', memberId: 'child2', memberName: 'Μαρία', total: 22.40, tax: 1.30, paymentMethod: 'Card', notes: 'Βιταμίνες' },
+      { id: 'rec_8', merchant: 'Αγορά Δώρου', date: '2026-11-08', category: 'Shopping & Gifts', memberId: 'mom', memberName: 'Μαμά', total: 35.00, tax: 6.70, paymentMethod: 'Card', notes: 'Δώρο γενεθλίων' }
     ];
 
     function App() {
       const [receipts, setReceipts] = useState(() => {
-        const saved = localStorage.getItem('family_receipts_v3');
+        const saved = localStorage.getItem('family_receipts_v6');
         return saved ? JSON.parse(saved) : INITIAL_RECEIPTS;
       });
 
       const [members] = useState(DEFAULT_MEMBERS);
       const [selectedMember, setSelectedMember] = useState('dad');
       const [isScanning, setIsScanning] = useState(false);
+      const [activeTab, setActiveTab] = useState('dashboard');
       const [searchTerm, setSearchTerm] = useState('');
       const [categoryFilter, setCategoryFilter] = useState('All');
       const [memberFilter, setMemberFilter] = useState('All');
+      const [isListening, setIsListening] = useState(false);
 
       const cameraInputRef = useRef(null);
       const fileInputRef = useRef(null);
+      const excelImportRef = useRef(null);
 
       useEffect(() => {
-        localStorage.setItem('family_receipts_v3', JSON.stringify(receipts));
+        localStorage.setItem('family_receipts_v6', JSON.stringify(receipts));
       }, [receipts]);
+
+      const downloadTemplate = () => {
+        const XLSX = window.XLSX;
+        if (!XLSX) return;
+        const wb = XLSX.utils.book_new();
+        const templateRows = [
+          { 'Ημερομηνία (YYYY-MM-DD)': '2026-11-01', 'Κατάστημα / Περιγραφή': 'AB Vassilopoulos', 'Κατηγορία': 'Supermarket', 'Μέλος (Μπαμπάς/Μαμά/Παιδί 1/Παιδί 2)': 'Μαμά', 'Σύνολο (€)': 48.65, 'Τρόπος Πληρωμής': 'Card', 'Σημειώσεις': 'Ψώνια' },
+          { 'Ημερομηνία (YYYY-MM-DD)': '2026-11-02', 'Κατάστημα / Περιγραφή': 'Ενοίκιο', 'Κατηγορία': 'Rent', 'Μέλος (Μπαμπάς/Μαμά/Παιδί 1/Παιδί 2)': 'Μπαμπάς', 'Σύνολο (€)': 450.00, 'Τρόπος Πληρωμής': 'Πάγια', 'Σημειώσεις': 'Ενοίκιο Νοεμβρίου' }
+        ];
+        const ws = XLSX.utils.json_to_sheet(templateRows);
+        XLSX.utils.book_append_sheet(wb, ws, 'Πρότυπο Εισαγωγής');
+        XLSX.writeFile(wb, `Receipts_Template_Nov_1_to_8.xlsx`);
+      };
+
+      const handleExcelImport = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const XLSX = window.XLSX;
+          const bstr = evt.target.result;
+          const wb = XLSX.read(bstr, { type: 'binary' });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws);
+
+          const importedReceipts = data.map((row, index) => {
+            const mName = row['Μέλος (Μπαμπάς/Μαμά/Παιδί 1/Παιδί 2)'] || row['Μέλος'] || 'Μπαμπάς';
+            const mObj = members.find(m => m.name.toLowerCase().includes(mName.toLowerCase())) || members[0];
+            return {
+              id: `rec_imp_${Date.now()}_${index}`,
+              merchant: row['Κατάστημα / Περιγραφή'] || row['Κατάστημα'] || 'Εισαγωγή Excel',
+              date: row['Ημερομηνία (YYYY-MM-DD)'] || row['Ημερομηνία'] || new Date().toISOString().slice(0, 10),
+              category: row['Κατηγορία'] || 'Uncategorized',
+              memberId: mObj.id,
+              memberName: mObj.name,
+              total: parseFloat(row['Σύνολο (€)'] || row['Σύνολο'] || 0),
+              tax: 0,
+              paymentMethod: row['Τρόπος Πληρωμής'] || 'Μετρητά',
+              notes: row['Σημειώσεις'] || 'Εισαγωγή από Excel'
+            };
+          });
+
+          setReceipts((prev) => [...importedReceipts, ...prev]);
+          alert(`Εισήχθησαν επιτυχώς ${importedReceipts.length} εγγραφές!`);
+        };
+        reader.readAsBinaryString(file);
+      };
 
       const exportToExcel = () => {
         const XLSX = window.XLSX;
@@ -75,7 +132,7 @@
         const receiptRows = receipts.map((r) => ({
           'ID': r.id,
           'Ημερομηνία': r.date,
-          'Κατάστημα': r.merchant,
+          'Κατάστημα / Περιγραφή': r.merchant,
           'Κατηγορία': r.category,
           'Μέλος': r.memberName,
           'Σύνολο (€)': r.total,
@@ -88,6 +145,61 @@
         XLSX.writeFile(wb, `Family_Expenses_${new Date().toISOString().slice(0, 10)}.xlsx`);
       };
 
+      const handleVoiceInput = () => {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+          alert('Η φωνητική αναγνώριση δεν υποστηρίζεται στο πρόγραμμα περιήγησής σας.');
+          return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'el-GR';
+
+        setIsListening(true);
+        recognition.start();
+
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          setIsListening(false);
+          alert(`Ακούστηκε: "${transcript}"`);
+
+          const currentMember = members.find(m => m.id === selectedMember) || members[0];
+          const newRec = {
+            id: `rec_voice_${Date.now()}`,
+            merchant: transcript,
+            date: new Date().toISOString().slice(0, 10),
+            category: 'Uncategorized',
+            memberId: currentMember.id,
+            memberName: currentMember.name,
+            total: 10.00,
+            tax: 0,
+            paymentMethod: 'Φωνητική Καταχώρηση',
+            notes: `Φωνητικό: ${transcript}`
+          };
+          setReceipts(prev => [newRec, ...prev]);
+        };
+
+        recognition.onerror = () => setIsListening(false);
+        recognition.onend = () => setIsListening(false);
+      };
+
+      const addQuickExpense = (category, defaultName, defaultAmount) => {
+        const mObj = members.find((m) => m.id === selectedMember) || members[0];
+        const newRec = {
+          id: `rec_quick_${Date.now()}`,
+          merchant: defaultName,
+          date: new Date().toISOString().slice(0, 10),
+          category: category,
+          memberId: mObj.id,
+          memberName: mObj.name,
+          total: defaultAmount,
+          tax: 0,
+          paymentMethod: 'Πάγια / Μετρητά',
+          notes: 'Γρήγορη καταχώρηση χωρίς απόδειξη'
+        };
+        setReceipts(prev => [newRec, ...prev]);
+      };
+
       const handleFileUpload = (e) => {
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
@@ -97,20 +209,57 @@
           const mObj = members.find((m) => m.id === selectedMember) || members[0];
           const newRec = {
             id: `rec_${Date.now()}`,
-            merchant: 'Νέο Κατάστημα (Σάρωση)',
+            merchant: 'Νέα Απόδειξη (Σάρωση)',
             date: new Date().toISOString().slice(0, 10),
-            category: 'Supermarket',
+            category: 'Uncategorized',
             memberId: mObj.id,
             memberName: mObj.name,
             total: 24.50,
             tax: 3.20,
             paymentMethod: 'Card',
-            notes: 'Καταχωρήθηκε από κινητό'
+            notes: 'Σαρώθηκε από φωτογραφία'
           };
           setReceipts((prev) => [newRec, ...prev]);
           setIsScanning(false);
         }, 1000);
       };
+
+      const changeCategory = (receiptId, newCat) => {
+        setReceipts(prev => prev.map(r => r.id === receiptId ? { ...r, category: newCat } : r));
+      };
+
+      const deleteReceipt = (id) => {
+        setReceipts((prev) => prev.filter((r) => r.id !== id));
+      };
+
+      const grandTotal = useMemo(() => receipts.reduce((acc, r) => acc + r.total, 0), [receipts]);
+
+      const memberBreakdown = useMemo(() => {
+        return members.map((m) => {
+          const mRecs = receipts.filter((r) => r.memberId === m.id);
+          const sum = mRecs.reduce((acc, r) => acc + r.total, 0);
+          const percent = grandTotal > 0 ? (sum / grandTotal) * 100 : 0;
+          return { ...m, count: mRecs.length, total: sum, percent };
+        });
+      }, [receipts, members, grandTotal]);
+
+      const categoryBreakdown = useMemo(() => {
+        return CATEGORIES.map((cat) => {
+          const catRecs = receipts.filter((r) => r.category === cat.id);
+          const sum = catRecs.reduce((acc, r) => acc + r.total, 0);
+          const percent = grandTotal > 0 ? (sum / grandTotal) * 100 : 0;
+          return { ...cat, count: catRecs.length, total: sum, percent };
+        });
+      }, [receipts, grandTotal]);
+
+      const dateBreakdown = useMemo(() => {
+        const map = {};
+        receipts.forEach((r) => {
+          if (!map[r.date]) map[r.date] = 0;
+          map[r.date] += r.total;
+        });
+        return Object.keys(map).sort().reverse().map(d => ({ date: d, total: map[d] }));
+      }, [receipts]);
 
       const filteredReceipts = useMemo(() => {
         return receipts.filter((r) => {
@@ -121,130 +270,16 @@
         });
       }, [receipts, searchTerm, categoryFilter, memberFilter]);
 
-      const grandTotal = useMemo(() => receipts.reduce((acc, r) => acc + r.total, 0), [receipts]);
+      const uncategorizedReceipts = useMemo(() => {
+        return receipts.filter(r => r.category === 'Uncategorized');
+      }, [receipts]);
 
       return (
-        <div className="min-h-screen pb-12">
+        <div className="min-h-screen pb-16">
           <input type="file" ref={cameraInputRef} onChange={handleFileUpload} accept="image/*" capture="environment" className="hidden" />
           <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
+          <input type="file" ref={excelImportRef} onChange={handleExcelImport} accept=".xlsx,.xls" className="hidden" />
 
           {/* Header */}
           <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
             <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg">
-                  ✨
-                </div>
-                <div>
-                  <h1 className="text-xl font-black text-indigo-600">Family Receipt Manager</h1>
-                  <p className="text-xs text-slate-500">Διαχείριση Αποδείξεων & Εξαγωγή σε Excel</p>
-                </div>
-              </div>
-              <button onClick={exportToExcel} className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md transition">
-                📥 Export Excel (.xlsx)
-              </button>
-            </div>
-          </header>
-
-          <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-            {/* Upload Section */}
-            <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b">
-                <div>
-                  <h2 className="text-base font-bold">📸 Προσθήκη Απόδειξης</h2>
-                  <p className="text-xs text-slate-400">Επιλέξτε μέλος και τραβήξτε φωτογραφία</p>
-                </div>
-                <div className="flex items-center space-x-2 bg-slate-100 p-1.5 rounded-2xl flex-wrap gap-1">
-                  {members.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setSelectedMember(m.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${selectedMember === m.id ? `${m.color}` : 'text-slate-600 hover:bg-slate-200'}`}
-                    >
-                      {m.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  onClick={() => cameraInputRef.current?.click()}
-                  disabled={isScanning}
-                  className="p-5 rounded-2xl border-2 border-dashed border-indigo-400 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 flex flex-col items-center justify-center space-y-2 transition"
-                >
-                  <span className="text-2xl">📸</span>
-                  <span className="font-bold text-sm">Φωτογραφία από Κάμερα Κινητού</span>
-                </button>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isScanning}
-                  className="p-5 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 flex flex-col items-center justify-center space-y-2 transition"
-                >
-                  <span className="text-2xl">🖼️</span>
-                  <span className="font-bold text-sm">Επιλογή από Συλλογή / Αρχεία</span>
-                </button>
-              </div>
-
-              {isScanning && <p className="text-xs font-bold text-indigo-600 animate-pulse text-center">Σάρωση απόδειξης...</p>}
-            </section>
-
-            {/* Total Spending */}
-            <section className="bg-indigo-600 text-white p-6 rounded-3xl shadow-lg flex items-center justify-between">
-              <div>
-                <span className="text-xs font-medium text-indigo-200 uppercase tracking-wider">Συνολικά Έξοδα Οικογένειας</span>
-                <h3 className="text-3xl font-black">€{grandTotal.toFixed(2)}</h3>
-              </div>
-              <div className="text-right text-xs text-indigo-200">
-                {receipts.length} Καταχωρημένες Αποδείξεις
-              </div>
-            </section>
-
-            {/* Receipts Table */}
-            <section className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-bold text-sm">Λίστα Αποδείξεων ({filteredReceipts.length})</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-400 text-[11px] uppercase font-semibold border-b border-slate-100">
-                      <th className="py-3 px-4">Ημερομηνία</th>
-                      <th className="py-3 px-4">Κατάστημα</th>
-                      <th className="py-3 px-4">Κατηγορία</th>
-                      <th className="py-3 px-4">Μέλος</th>
-                      <th className="py-3 px-4 text-right">Ποσό (€)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredReceipts.map((r) => {
-                      const mObj = members.find((m) => m.id === r.memberId);
-                      return (
-                        <tr key={r.id} className="hover:bg-slate-50">
-                          <td className="py-3 px-4 font-mono text-xs text-slate-500">{r.date}</td>
-                          <td className="py-3 px-4 font-bold text-slate-800">{r.merchant}</td>
-                          <td className="py-3 px-4">
-                            <span className="px-2 py-0.5 rounded text-xs border bg-slate-100">{r.category}</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${mObj?.badge || ''}`}>
-                              {r.memberName}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-right font-black text-slate-900">€{r.total.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </main>
-        </div>
-      );
-    }
-
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
-</body>
-</html>
