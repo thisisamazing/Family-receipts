@@ -230,42 +230,72 @@
           const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
           const wsname = wb.SheetNames[0];
           const ws = wb.Sheets[wsname];
-          const data = XLSX.utils.sheet_to_json(ws, { raw: false });
+          const data = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
 
           let importedCount = 0;
 
           data.forEach((row, index) => {
-            const rawAmount = row['Σύνολο (€)'] ?? row['Σύνολο'] ?? row['Ποσό (€)'] ?? row['Ποσό'] ?? row['Amount'] ?? row['TOTAL'];
-            const parsedTotal = parseFloat(rawAmount);
-            const rawCat = (row['Κατηγορία Εξόδου'] ?? row['Κατηγορία'] ?? row['Category'] ?? '').toString().trim();
+            // Flexible header detection for amount
+            const rawAmount = row['Σύνολο (€)'] || row['Σύνολο'] || row['Ποσό (€)'] || row['Ποσό'] || row['Amount'] || row['TOTAL'] || row['Τιμή'] || row['Ποσο'];
+            const parsedTotal = parseFloat(String(rawAmount).replace(',', '.'));
 
-            if (isNaN(parsedTotal) || parsedTotal <= 0 || !rawCat) return;
+            if (isNaN(parsedTotal) || parsedTotal <= 0) return;
+
+            // Flexible header detection for Category
+            const rawCat = (row['Κατηγορία Εξόδου'] || row['Κατηγορία'] || row['Category'] || row['Είδος Εξόδου'] || '').toString().trim();
 
             let categoryKey = 'Uncategorized';
-            const catLower = rawCat.toLowerCase();
-            const matched = CATEGORIES.find(c => c.id.toLowerCase() === catLower || c.label.toLowerCase().includes(catLower));
+            if (rawCat) {
+              const catLower = rawCat.toLowerCase();
+              const matched = CATEGORIES.find(c => c.id.toLowerCase() === catLower || c.label.toLowerCase().includes(catLower));
 
-            if (matched) categoryKey = matched.id;
-            else if (catLower.includes('υπεραγορ') || catLower.includes('supermarket')) categoryKey = 'Supermarket';
-            else if (catLower.includes('δανει') || catLower.includes('εφορια')) categoryKey = 'Loans & Tax';
-            else if (catLower.includes('καυσιμ') || catLower.includes('βενζιν')) categoryKey = 'Fuel & Transport';
-            else if (catLower.includes('εστιασ') || catLower.includes('φαγητ')) categoryKey = 'Dining & Coffee';
+              if (matched) {
+                categoryKey = matched.id;
+              } else if (catLower.includes('υπεραγορ') || catLower.includes('supermarket') || catLower.includes('τροφιμ')) categoryKey = 'Supermarket';
+              else if (catLower.includes('δανει') || catLower.includes('εφορια') || catLower.includes('τραπεζ')) categoryKey = 'Loans & Tax';
+              else if (catLower.includes('καυσιμ') || catLower.includes('βενζιν') || catLower.includes('πετρελ')) categoryKey = 'Fuel & Transport';
+              else if (catLower.includes('εστιασ') || catLower.includes('φαγητ') || catLower.includes('καφε')) categoryKey = 'Dining & Coffee';
+              else if (catLower.includes('φαρμακ') || catLower.includes('γιατρ')) categoryKey = 'Health & Pharmacy';
+              else if (catLower.includes('λογαριασμ') || catLower.includes('bills')) categoryKey = 'Utilities & Bills';
+              else if (catLower.includes('σχολικ') || catLower.includes('φροντιστ')) categoryKey = 'Education & Hobbies';
+              else if (catLower.includes('ενοικιο')) categoryKey = 'Rent';
+              else if (catLower.includes('τσιγαρ')) categoryKey = 'Cigarettes';
+              else if (catLower.includes('ψωνια') || catLower.includes('δωρα')) categoryKey = 'Shopping & Gifts';
+            }
 
-            const mName = (row['Πληρωτής'] ?? row['Μέλος'] ?? '').toString().trim();
+            // Flexible header detection for Payer (Member)
+            const mName = (row['Πληρωτής'] || row['Μέλος'] || row['Πληρωσε'] || row['Όνομα'] || '').toString().trim();
             const mObj = members.find(m => m.name.toLowerCase().includes(mName.toLowerCase())) || members[0];
-            let ben = (row['Ποιον αφορά'] ?? '').toString().trim() || 'Όλη η Οικογένεια';
+
+            // Flexible header detection for Beneficiary (Ποιον Αφορά)
+            let ben = (row['Ποιον αφορά'] || row['Δικαιούχος'] || row['Αφορά'] || row['Για ποιον'] || '').toString().trim();
+            if (!ben) {
+              ben = 'Όλη η Οικογένεια';
+            }
+
+            // Flexible header detection for Merchant
+            const merchantVal = (row['Κατάστημα / Παραλήπτης'] || row['Κατάστημα'] || row['Παραλήπτης'] || row['Merchant'] || row['Προμηθευτής'] || 'Εισαγωγή Excel').toString().trim();
+
+            // Flexible header detection for Subcategory / Description
+            const subcatVal = (row['Υποκατηγορία / Περιγραφή'] || row['Υποκατηγορία'] || row['Περιγραφή'] || row['Λεπτομέρειες'] || '').toString().trim();
+
+            // Flexible header detection for Date
+            const dateVal = (row['Ημερομηνία'] || row['Date'] || getTodayFormatted()).toString().trim();
+
+            // Flexible header detection for Payment Method
+            const payMethodVal = (row['Τρόπος Πληρωμής'] || row['Πληρωμή'] || row['Payment Method'] || 'Μετρητά').toString().trim();
 
             const newRec = {
               id: `rec_imp_${Date.now()}_${index}`,
-              merchant: (row['Κατάστημα / Παραλήπτης'] ?? 'Εισαγωγή Excel').toString().trim(),
-              subcategory: (row['Υποκατηγορία / Περιγραφή'] ?? '').toString().trim(),
-              date: (row['Ημερομηνία'] ?? getTodayFormatted()).toString().trim(),
+              merchant: merchantVal || 'Εισαγωγή Excel',
+              subcategory: subcatVal,
+              date: dateVal,
               category: categoryKey,
               memberId: mObj.id,
               memberName: mObj.name,
               beneficiary: ben,
               total: parsedTotal,
-              paymentMethod: (row['Τρόπος Πληρωμής'] ?? 'Μετρητά').toString().trim(),
+              paymentMethod: payMethodVal,
               notes: 'Εισαγωγή Excel'
             };
 
@@ -273,9 +303,55 @@
             importedCount++;
           });
 
-          alert(`Εισήχθησαν επιτυχώς ${importedCount} εγγραφές!`);
+          alert(`Εισήχθησαν επιτυχώς ${importedCount} εγγραφές από το Excel!`);
         };
         reader.readAsBinaryString(file);
+      };
+
+      const downloadTemplate = () => {
+        const XLSX = window.XLSX;
+        if (!XLSX) {
+          alert('Η βιβλιοθήκη Excel φορτώνει, παρακαλώ δοκιμάστε ξανά σε 2 δευτερόλεπτα.');
+          return;
+        }
+
+        const wb = XLSX.utils.book_new();
+        const templateData = [
+          {
+            'Ημερομηνία': '01/11/26',
+            'Κατάστημα / Παραλήπτης': 'AB Vassilopoulos',
+            'Υποκατηγορία / Περιγραφή': 'Ψώνια Εβδομάδας',
+            'Κατηγορία Εξόδου': 'Supermarket',
+            'Πληρωτής': 'Ανθή',
+            'Ποιον αφορά': 'Όλη η Οικογένεια',
+            'Σύνολο (€)': 48.65,
+            'Τρόπος Πληρωμής': 'Card'
+          },
+          {
+            'Ημερομηνία': '02/11/26',
+            'Κατάστημα / Παραλήπτης': 'EKO Gas Station',
+            'Υποκατηγορία / Περιγραφή': 'Βενζίνη',
+            'Κατηγορία Εξόδου': 'Fuel & Transport',
+            'Πληρωτής': 'Νίκος',
+            'Ποιον αφορά': 'Όλη η Οικογένεια',
+            'Σύνολο (€)': 55.00,
+            'Τρόπος Πληρωμής': 'Card'
+          },
+          {
+            'Ημερομηνία': '03/11/26',
+            'Κατάστημα / Παραλήπτης': 'Zara',
+            'Υποκατηγορία / Περιγραφή': 'Ρούχα',
+            'Κατηγορία Εξόδου': 'Shopping & Gifts',
+            'Πληρωτής': 'Ανθή',
+            'Ποιον αφορά': 'Κορίτσια (Αγγελική & Χριστίνα 50-50)',
+            'Σύνολο (€)': 60.00,
+            'Τρόπος Πληρωμής': 'Card'
+          }
+        ];
+
+        const ws = XLSX.utils.json_to_sheet(templateData);
+        XLSX.utils.book_append_sheet(wb, ws, 'Πρότυπο Αποδείξεων');
+        XLSX.writeFile(wb, 'Receipts_Template.xlsx');
       };
 
       const exportToExcel = () => {
@@ -629,6 +705,12 @@
 
           <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
+            {/* Hidden Input Elements for File Pickers */}
+            <input type="file" ref={cameraInputRef} onChange={handleFileUpload} accept="image/*" capture="environment" className="hidden" />
+            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" multiple className="hidden" />
+            <input type="file" ref={excelImportRef} onChange={handleExcelImport} accept=".xlsx, .xls, .csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" className="hidden" />
+            <input type="file" ref={restoreJsonRef} onChange={importBackupJSON} accept=".json" className="hidden" />
+
             {/* Quick Actions & Manual Entry Trigger */}
             <section className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-3 gap-3">
@@ -722,7 +804,7 @@
               </div>
 
               {/* Sequential Photo Upload Options */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-1">
                 <button onClick={() => cameraInputRef.current?.click()} disabled={isScanning} className="p-2.5 rounded-2xl border border-dashed border-indigo-400 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center gap-2">
                   <span>📸 Φωτογραφία (1-1 Σάρωση)</span>
                 </button>
@@ -730,7 +812,10 @@
                   <span>🖼️ Πολλαπλή Σάρωση (Διαδοχική)</span>
                 </button>
                 <button onClick={() => excelImportRef.current?.click()} className="p-2.5 rounded-2xl border border-dashed border-emerald-400 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center gap-2">
-                  <span>📥 Εισαγωγή Excel</span>
+                  <span>📥 Εισαγωγή Excel / CSV</span>
+                </button>
+                <button onClick={downloadTemplate} className="p-2.5 rounded-2xl border border-dashed border-blue-400 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center gap-2">
+                  <span>📄 Λήψη Προτύπου (Template)</span>
                 </button>
               </div>
             </section>
