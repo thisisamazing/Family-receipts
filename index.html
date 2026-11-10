@@ -171,6 +171,10 @@
       const excelImportRef = useRef(null);
       const restoreJsonRef = useRef(null);
 
+      // State for Date Deletion Modal
+      const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [deleteDateLimit, setDeleteDateLimit] = useState('');
+
       // Auto-save across master key AND fallback keys to guarantee safety
       useEffect(() => {
         localStorage.setItem(CURRENT_STORAGE_KEY, JSON.stringify(receipts));
@@ -757,6 +761,9 @@
                 </button>
                 <button onClick={exportToExcel} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition">
                   📥 Excel
+                </button>
+                <button onClick={() => setShowDeleteModal(true)} className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition" title="Διαγραφή παλιών δεδομένων">
+                  🗑️ Εκκαθάριση
                 </button>
               </div>
             </div>
@@ -1447,6 +1454,84 @@
                       </div>
                     </div>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {/* DELETE / CLEANUP MODAL WITH DATE LIMIT */}
+            {showDeleteModal && (
+              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <h3 className="text-base font-bold text-slate-800">🗑️ Εκκαθάριση Δεδομένων & Όριο Ημερομηνίας</h3>
+                    <button onClick={() => setShowDeleteModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                  </div>
+
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Επιλέξτε αν θέλετε να διαγράψετε εγγραφές παλαιότερες από μια ημερομηνία ή να κάνετε πλήρη διαγραφή.
+                  </p>
+
+                  <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      📅 Διαγραφή εγγραφών παλαιότερων από (ΗΗ/ΜΜ/ΕΕ):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="π.χ. 01/10/26"
+                      value={deleteDateLimit}
+                      onChange={(e) => setDeleteDateLimit(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-xl text-xs font-mono font-bold bg-white"
+                    />
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          if (!deleteDateLimit) {
+                            alert('Παρακαλώ συμπληρώστε μια ημερομηνία σε μορφή ΗΗ/ΜΜ/ΕΕ');
+                            return;
+                          }
+                          const limitTimestamp = parseDateForSort(deleteDateLimit);
+                          if (!limitTimestamp) {
+                            alert('Μη έγκυρη μορφή ημερομηνίας.');
+                            return;
+                          }
+
+                          const remaining = receipts.filter(r => parseDateForSort(r.date) >= limitTimestamp);
+                          const deletedCount = receipts.length - remaining.length;
+
+                          if (confirm(`Θέλετε να διαγράψετε ${deletedCount} εγγραφές παλαιότερες από ${deleteDateLimit};`)) {
+                            setReceipts(remaining);
+                            setShowDeleteModal(false);
+                            setDeleteDateLimit('');
+                            alert(`Διαγράφηκαν ${deletedCount} παλιές εγγραφές.`);
+                          }
+                        }}
+                        className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition"
+                      >
+                        🗑️ Διαγραφή Παλαιότερων
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t flex flex-col gap-2">
+                    <button
+                      onClick={() => {
+                        if (confirm('ΠΡΟΣΟΧΗ! Θέλετε να διαγράψετε ΟΛΕΣ τις καταχωρημένες αποδείξεις;')) {
+                          setReceipts([]);
+                          setShowDeleteModal(false);
+                        }
+                      }}
+                      className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition"
+                    >
+                      ⚠️ Πλήρης Διαγραφή Όλων των Δεδομένων
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteModal(false)}
+                      className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                    >
+                      Ακύρωση
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
