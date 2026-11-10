@@ -145,6 +145,9 @@
       const [beneficiaryFilter, setBeneficiaryFilter] = useState('All');
       const [isListening, setIsListening] = useState(false);
 
+      // New State to Toggle Uncategorized Box Visibility
+      const [showUncategorizedBox, setShowUncategorizedBox] = useState(true);
+
       const [sortField, setSortField] = useState('date');
       const [sortDirection, setSortDirection] = useState('asc');
 
@@ -241,6 +244,19 @@
 
             if (isNaN(parsedTotal) || parsedTotal <= 0) return;
 
+            // Flexible header detection for Merchant / Store name
+            let merchantVal = '';
+            for (const key of Object.keys(row)) {
+              const kLower = key.toLowerCase();
+              if (kLower.includes('κατάστημα') || kLower.includes('καταστημα') || kLower.includes('παραλήπτης') || kLower.includes('παραληπτης') || kLower.includes('merchant') || kLower.includes('προμηθευτής')) {
+                merchantVal = String(row[key]).trim();
+                if (merchantVal) break;
+              }
+            }
+            if (!merchantVal) {
+              merchantVal = String(row['Κατάστημα / Παραλήπτης'] || row['Κατάστημα'] || row['Παραλήπτης'] || '').trim();
+            }
+
             // Flexible header detection for Category
             const rawCat = (row['Κατηγορία Εξόδου'] || row['Κατηγορία'] || row['Category'] || row['Είδος Εξόδου'] || '').toString().trim();
 
@@ -267,27 +283,60 @@
             const mName = (row['Πληρωτής'] || row['Μέλος'] || row['Πληρωσε'] || row['Όνομα'] || '').toString().trim();
             const mObj = members.find(m => m.name.toLowerCase().includes(mName.toLowerCase())) || members[0];
 
-            // Flexible header detection for Beneficiary (Ποιον Αφορά)
-            let ben = (row['Ποιον αφορά'] || row['Δικαιούχος'] || row['Αφορά'] || row['Για ποιον'] || '').toString().trim();
-            if (!ben) {
-              ben = 'Όλη η Οικογένεια';
+            // Flexible header detection for Beneficiary (Ποιον Αφορά) with Exact Family Name Matching
+            let ben = '';
+            for (const key of Object.keys(row)) {
+              const kLower = key.toLowerCase();
+              if (kLower.includes('αφορά') || kLower.includes('αφορα') || kLower.includes('δικαιούχος') || kLower.includes('δικαιουχος') || kLower.includes('ποιον')) {
+                ben = String(row[key]).trim();
+                if (ben) break;
+              }
             }
 
-            // Flexible header detection for Merchant
-            const merchantVal = (row['Κατάστημα / Παραλήπτης'] || row['Κατάστημα'] || row['Παραλήπτης'] || row['Merchant'] || row['Προμηθευτής'] || 'Εισαγωγή Excel').toString().trim();
+            if (!ben) ben = 'Όλη η Οικογένεια';
+            else {
+              const benLower = ben.toLowerCase();
+              if (benLower.includes('κορίτσ') || benLower.includes('κοριτσ')) {
+                ben = 'Κορίτσια (Αγγελική & Χριστίνα 50-50)';
+              } else if (benLower.includes('νίκ') || benLower.includes('νικ')) {
+                ben = 'Νίκος';
+              } else if (benLower.includes('ανθή') || benLower.includes('ανθη')) {
+                ben = 'Ανθή';
+              } else if (benLower.includes('θεοδώρα') || benLower.includes('θεοδωρα')) {
+                ben = 'Θεοδώρα';
+              } else if (benLower.includes('αγγελική') || benLower.includes('αγγελικη')) {
+                ben = 'Αγγελική';
+              } else if (benLower.includes('χριστίνα') || benLower.includes('χριστινα')) {
+                ben = 'Χριστίνα';
+              } else if (benLower.includes('οικογένει') || benLower.includes('οικογενει')) {
+                ben = 'Όλη η Οικογένεια';
+              }
+            }
 
             // Flexible header detection for Subcategory / Description
             const subcatVal = (row['Υποκατηγορία / Περιγραφή'] || row['Υποκατηγορία'] || row['Περιγραφή'] || row['Λεπτομέρειες'] || '').toString().trim();
 
-            // Flexible header detection for Date
-            const dateVal = (row['Ημερομηνία'] || row['Date'] || getTodayFormatted()).toString().trim();
+            // Strict Day-Month-Year Date Parsing
+            let dateVal = (row['Ημερομηνία'] || row['Date'] || '').toString().trim();
+            if (dateVal) {
+              const dateParts = dateVal.split(/[\/\-\.]/);
+              if (dateParts.length === 3) {
+                let d = dateParts[0].padStart(2, '0');
+                let m = dateParts[1].padStart(2, '0');
+                let y = dateParts[2].length === 2 ? `20${dateParts[2]}` : dateParts[2];
+                // Guarantee Day-Month-Year Order
+                dateVal = `${d}/${m}/${y.slice(-2)}`;
+              }
+            } else {
+              dateVal = getTodayFormatted();
+            }
 
             // Flexible header detection for Payment Method
             const payMethodVal = (row['Τρόπος Πληρωμής'] || row['Πληρωμή'] || row['Payment Method'] || 'Μετρητά').toString().trim();
 
             const newRec = {
               id: `rec_imp_${Date.now()}_${index}`,
-              merchant: merchantVal || 'Εισαγωγή Excel',
+              merchant: merchantVal || (subcatVal ? subcatVal : 'Απόδειξη Excel'),
               subcategory: subcatVal,
               date: dateVal,
               category: categoryKey,
@@ -340,18 +389,28 @@
           {
             'Ημερομηνία': '03/11/26',
             'Κατάστημα / Παραλήπτης': 'Zara',
-            'Υποκατηγορία / Περιγραφή': 'Ρούχα',
+            'Υποκατηγορία / Περιγραφή': 'Ρούχα Κορίτσια',
             'Κατηγορία Εξόδου': 'Shopping & Gifts',
             'Πληρωτής': 'Ανθή',
             'Ποιον αφορά': 'Κορίτσια (Αγγελική & Χριστίνα 50-50)',
             'Σύνολο (€)': 60.00,
             'Τρόπος Πληρωμής': 'Card'
+          },
+          {
+            'Ημερομηνία': '04/11/26',
+            'Κατάστημα / Παραλήπτης': 'Φροντιστήριο Αγγλικών',
+            'Υποκατηγορία / Περιγραφή': 'Δίδακτρα',
+            'Κατηγορία Εξόδου': 'Education & Hobbies',
+            'Πληρωτής': 'Νίκος',
+            'Ποιον αφορά': 'Θεοδώρα',
+            'Σύνολο (€)': 80.00,
+            'Τρόπος Πληρωμής': 'Bank Transfer'
           }
         ];
 
         const ws = XLSX.utils.json_to_sheet(templateData);
         XLSX.utils.book_append_sheet(wb, ws, 'Πρότυπο Αποδείξεων');
-        XLSX.writeFile(wb, 'Receipts_Template.xlsx');
+        XLSX.writeFile(wb, 'Receipts_Template_Updated.xlsx');
       };
 
       const exportToExcel = () => {
@@ -812,7 +871,7 @@
                   <span>🖼️ Πολλαπλή Σάρωση (Διαδοχική)</span>
                 </button>
                 <button onClick={() => excelImportRef.current?.click()} className="p-2.5 rounded-2xl border border-dashed border-emerald-400 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center gap-2">
-                  <span>📥 Εισαγωγή Excel / CSV</span>
+                  <span>📥 Εισαγωγή Excel</span>
                 </button>
                 <button onClick={downloadTemplate} className="p-2.5 rounded-2xl border border-dashed border-blue-400 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center gap-2">
                   <span>📄 Λήψη Προτύπου (Template)</span>
@@ -820,7 +879,7 @@
               </div>
             </section>
 
-            {/* Uncategorized Classifier */}
+            {/* Uncategorized Classifier with Toggle Option */}
             {uncategorizedReceipts.length > 0 && (
               <section className="bg-orange-50 border border-orange-200 p-4 rounded-3xl space-y-3">
                 <div className="flex items-center justify-between">
@@ -831,29 +890,37 @@
                       <p className="text-[11px] text-orange-700">Επιλέξτε τη σωστή κατηγορία με 1 κλικ.</p>
                     </div>
                   </div>
+                  <button
+                    onClick={() => setShowUncategorizedBox(prev => !prev)}
+                    className="px-3 py-1 bg-white hover:bg-orange-100 border border-orange-300 text-orange-800 text-xs font-bold rounded-xl transition"
+                  >
+                    {showUncategorizedBox ? '👁️ Απόκρυψη' : '👁️ Εμφάνιση'}
+                  </button>
                 </div>
 
-                <div className="space-y-2">
-                  {uncategorizedReceipts.map(r => (
-                    <div key={r.id} className="p-2.5 bg-white rounded-2xl border border-orange-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="font-bold text-xs text-slate-800">{r.merchant}</span>
-                        <span className="text-[10px] text-slate-400 block">{r.date} — €{r.total.toFixed(2)} (Πληρωτής: {r.memberName} | Αφορά: {r.beneficiary || 'Όλη η Οικογένεια'})</span>
+                {showUncategorizedBox && (
+                  <div className="space-y-2 pt-1">
+                    {uncategorizedReceipts.map(r => (
+                      <div key={r.id} className="p-2.5 bg-white rounded-2xl border border-orange-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="font-bold text-xs text-slate-800">{r.merchant}</span>
+                          <span className="text-[10px] text-slate-400 block">{r.date} — €{r.total.toFixed(2)} (Πληρωτής: {r.memberName} | Αφορά: {r.beneficiary || 'Όλη η Οικογένεια'})</span>
+                        </div>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {CATEGORIES.filter(c => c.id !== 'Uncategorized').map(cat => (
+                            <button
+                              key={cat.id}
+                              onClick={() => changeCategory(r.id, cat.id)}
+                              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-100 text-[10px] font-bold text-slate-700 hover:text-indigo-700 border border-slate-200 transition"
+                            >
+                              {cat.icon} {cat.label.split('/')[0]}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {CATEGORIES.filter(c => c.id !== 'Uncategorized').map(cat => (
-                          <button
-                            key={cat.id}
-                            onClick={() => changeCategory(r.id, cat.id)}
-                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-100 text-[10px] font-bold text-slate-700 hover:text-indigo-700 border border-slate-200 transition"
-                          >
-                            {cat.icon} {cat.label.split('/')[0]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 
