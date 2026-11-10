@@ -9,7 +9,7 @@
   <!-- React & React DOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <!-- Babel Compiler for JSX -->
+  <!-- Babel Compiler for JSX Netlify Compatibility -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <!-- SheetJS for Excel Exports & Imports -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -109,4 +109,1201 @@
 
     const CATEGORIES = [
       { id: 'Supermarket', label: 'Υπεραγορά / Τρόφιμα', icon: '🛒', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
-      { id: 'Fuel & Transport', label: 'Καύσιμο Αυτοκινήτου', icon: '⛽', color: '
+      { id: 'Fuel & Transport', label: 'Καύσιμο Αυτοκινήτου', icon: '⛽', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+      { id: 'Dining & Coffee', label: 'Εστίαση / Φαγητό Έξω', icon: '🍔', color: 'bg-rose-100 text-rose-800 border-rose-300' },
+      { id: 'Health & Pharmacy', label: 'Φάρμακα / Ιατρικά', icon: '💊', color: 'bg-teal-100 text-teal-800 border-teal-300' },
+      { id: 'Utilities & Bills', label: 'Λογαριασμοί / Bills', icon: '⚡', color: 'bg-purple-100 text-purple-800 border-purple-300' },
+      { id: 'Education & Hobbies', label: 'Σχολικά / Φροντιστήρια', icon: '📚', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' },
+      { id: 'Allowance', label: 'Χαρτζιλίκι', icon: '💵', color: 'bg-green-100 text-green-800 border-green-300' },
+      { id: 'Rent', label: 'Ενοίκιο', icon: '🏠', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+      { id: 'Loans & Tax', label: 'Δάνεια - Εφορία', icon: '🏦', color: 'bg-red-100 text-red-800 border-red-300' },
+      { id: 'Shopping & Gifts', label: 'Ψώνια & Δώρα', icon: '🎁', color: 'bg-pink-100 text-pink-800 border-pink-300' },
+      { id: 'Cigarettes', label: 'Τσιγάρα', icon: '🚬', color: 'bg-stone-100 text-stone-800 border-stone-300' },
+      { id: 'Uncategorized', label: 'Διάφορα (Ταξινόμηση)', icon: '❓', color: 'bg-orange-100 text-orange-800 border-orange-300' }
+    ];
+
+    const INITIAL_RECEIPTS = [
+      { id: 'rec_1', merchant: 'AB Vassilopoulos', subcategory: 'Ψώνια Εβδομάδας', date: '01/11/26', category: 'Supermarket', memberId: 'anthi', memberName: 'Ανθή', beneficiary: 'Όλη η Οικογένεια', total: 48.65, paymentMethod: 'Card', notes: '' },
+      { id: 'rec_2', merchant: 'EKO Gas Station', subcategory: 'Βενζίνη', date: '02/11/26', category: 'Fuel & Transport', memberId: 'nikos', memberName: 'Νίκος', beneficiary: 'Όλη η Οικογένεια', total: 55.00, paymentMethod: 'Card', notes: '' },
+      { id: 'rec_3', merchant: 'Φροντιστήριο Αγγλικών', subcategory: 'Δίδακτρα', date: '03/11/26', category: 'Education & Hobbies', memberId: 'nikos', memberName: 'Νίκος', beneficiary: 'Θεοδώρα', total: 80.00, paymentMethod: 'Bank Transfer', notes: '' },
+      { id: 'rec_4', merchant: 'Ενοίκιο Σπιτιού', subcategory: 'Μηνιαίο Ενοίκιο', date: '04/11/26', category: 'Rent', memberId: 'nikos', memberName: 'Νίκος', beneficiary: 'Όλη η Οικογένεια', total: 450.00, paymentMethod: 'Direct Order / Πάγια', notes: '' }
+    ];
+
+    function App() {
+      const [receipts, setReceipts] = useState(() => {
+        return loadStoredReceiptsWithMigration(INITIAL_RECEIPTS);
+      });
+
+      const [members] = useState(DEFAULT_MEMBERS);
+      const [selectedMember, setSelectedMember] = useState('nikos');
+      const [isScanning, setIsScanning] = useState(false);
+      const [scanQueue, setScanQueue] = useState([]);
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [searchTerm, setSearchTerm] = useState('');
+      const [categoryFilter, setCategoryFilter] = useState('All');
+      const [memberFilter, setMemberFilter] = useState('All');
+      const [beneficiaryFilter, setBeneficiaryFilter] = useState('All');
+      const [isListening, setIsListening] = useState(false);
+
+      const [sortField, setSortField] = useState('date');
+      const [sortDirection, setSortDirection] = useState('asc');
+
+      const [editingReceipt, setEditingReceipt] = useState(null);
+
+      const [showFormModal, setShowFormModal] = useState(false);
+      const [formData, setFormData] = useState({
+        date: getTodayFormatted(),
+        merchant: '',
+        subcategory: '',
+        category: 'Supermarket',
+        memberId: 'nikos',
+        beneficiary: 'Όλη η Οικογένεια',
+        total: '',
+        paymentMethod: 'Card',
+        notes: ''
+      });
+
+      const cameraInputRef = useRef(null);
+      const fileInputRef = useRef(null);
+      const excelImportRef = useRef(null);
+      const restoreJsonRef = useRef(null);
+
+      // Auto-save across master key AND fallback keys to guarantee safety
+      useEffect(() => {
+        localStorage.setItem(CURRENT_STORAGE_KEY, JSON.stringify(receipts));
+        localStorage.setItem('family_receipts_v18', JSON.stringify(receipts));
+      }, [receipts]);
+
+      const exportBackupJSON = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(receipts, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `Family_Expenses_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+      };
+
+      const importBackupJSON = (e) => {
+        const fileReader = new FileReader();
+        if (e.target.files[0]) {
+          fileReader.readAsText(e.target.files[0], "UTF-8");
+          fileReader.onload = (event) => {
+            try {
+              const parsed = JSON.parse(event.target.result);
+              if (Array.isArray(parsed)) {
+                setReceipts(parsed);
+                alert(`Επιτυχής επαναφορά ${parsed.length} εγγραφών!`);
+              }
+            } catch (err) {
+              alert("Σφάλμα κατά την ανάγνωση του αρχείου ασφαλείας.");
+            }
+          };
+        }
+      };
+
+      const saveReceipt = (newRec) => {
+        setReceipts(prev => [newRec, ...prev.filter(r => r.id !== newRec.id)]);
+      };
+
+      const removeReceipt = (id) => {
+        setReceipts(prev => prev.filter(r => r.id !== id));
+      };
+
+      const handleSort = (field) => {
+        if (sortField === field) {
+          setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+          setSortField(field);
+          setSortDirection('asc');
+        }
+      };
+
+      const handleExcelImport = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const XLSX = window.XLSX;
+          const bstr = evt.target.result;
+          const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws, { raw: false });
+
+          let importedCount = 0;
+
+          data.forEach((row, index) => {
+            const rawAmount = row['Σύνολο (€)'] ?? row['Σύνολο'] ?? row['Ποσό (€)'] ?? row['Ποσό'] ?? row['Amount'] ?? row['TOTAL'];
+            const parsedTotal = parseFloat(rawAmount);
+            const rawCat = (row['Κατηγορία Εξόδου'] ?? row['Κατηγορία'] ?? row['Category'] ?? '').toString().trim();
+
+            if (isNaN(parsedTotal) || parsedTotal <= 0 || !rawCat) return;
+
+            let categoryKey = 'Uncategorized';
+            const catLower = rawCat.toLowerCase();
+            const matched = CATEGORIES.find(c => c.id.toLowerCase() === catLower || c.label.toLowerCase().includes(catLower));
+
+            if (matched) categoryKey = matched.id;
+            else if (catLower.includes('υπεραγορ') || catLower.includes('supermarket')) categoryKey = 'Supermarket';
+            else if (catLower.includes('δανει') || catLower.includes('εφορια')) categoryKey = 'Loans & Tax';
+            else if (catLower.includes('καυσιμ') || catLower.includes('βενζιν')) categoryKey = 'Fuel & Transport';
+            else if (catLower.includes('εστιασ') || catLower.includes('φαγητ')) categoryKey = 'Dining & Coffee';
+
+            const mName = (row['Πληρωτής'] ?? row['Μέλος'] ?? '').toString().trim();
+            const mObj = members.find(m => m.name.toLowerCase().includes(mName.toLowerCase())) || members[0];
+            let ben = (row['Ποιον αφορά'] ?? '').toString().trim() || 'Όλη η Οικογένεια';
+
+            const newRec = {
+              id: `rec_imp_${Date.now()}_${index}`,
+              merchant: (row['Κατάστημα / Παραλήπτης'] ?? 'Εισαγωγή Excel').toString().trim(),
+              subcategory: (row['Υποκατηγορία / Περιγραφή'] ?? '').toString().trim(),
+              date: (row['Ημερομηνία'] ?? getTodayFormatted()).toString().trim(),
+              category: categoryKey,
+              memberId: mObj.id,
+              memberName: mObj.name,
+              beneficiary: ben,
+              total: parsedTotal,
+              paymentMethod: (row['Τρόπος Πληρωμής'] ?? 'Μετρητά').toString().trim(),
+              notes: 'Εισαγωγή Excel'
+            };
+
+            saveReceipt(newRec);
+            importedCount++;
+          });
+
+          alert(`Εισήχθησαν επιτυχώς ${importedCount} εγγραφές!`);
+        };
+        reader.readAsBinaryString(file);
+      };
+
+      const exportToExcel = () => {
+        const XLSX = window.XLSX;
+        if (!XLSX) return;
+
+        const wb = XLSX.utils.book_new();
+        const receiptRows = receipts.map((r) => ({
+          'ID': r.id,
+          'Ημερομηνία': r.date,
+          'Κατάστημα / Παραλήπτης': r.merchant,
+          'Υποκατηγορία / Περιγραφή': r.subcategory || '',
+          'Κατηγορία Εξόδου': r.category === 'Supermarket' ? 'Υπεραγορά' : (r.category === 'Loans & Tax' ? 'Δάνεια - Εφορία' : r.category),
+          'Πληρωτής': r.memberName,
+          'Ποιον αφορά': r.beneficiary || 'Όλη η Οικογένεια',
+          'Σύνολο (€)': r.total,
+          'Τρόπος Πληρωμής': r.paymentMethod
+        }));
+        const ws1 = XLSX.utils.json_to_sheet(receiptRows);
+        XLSX.utils.book_append_sheet(wb, ws1, 'Αποδείξεις');
+
+        XLSX.writeFile(wb, `Family_Expenses_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      };
+
+      const handleVoiceInput = () => {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+          alert('Η φωνητική αναγνώριση δεν υποστηρίζεται στο πρόγραμμα περιήγησής σας.');
+          return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'el-GR';
+
+        setIsListening(true);
+        recognition.start();
+
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          setIsListening(false);
+
+          let detectedBen = 'Όλη η Οικογένεια';
+          if (transcript.toLowerCase().includes('κορίτσια')) {
+            detectedBen = 'Κορίτσια (Αγγελική & Χριστίνα 50-50)';
+          }
+
+          setFormData({
+            date: getTodayFormatted(),
+            merchant: transcript,
+            subcategory: 'Φωνητική Εγγραφή',
+            category: 'Uncategorized',
+            memberId: selectedMember,
+            beneficiary: detectedBen,
+            total: '',
+            paymentMethod: 'Μετρητά',
+            notes: `Φωνητικό: ${transcript}`
+          });
+          setShowFormModal(true);
+        };
+
+        recognition.onerror = () => setIsListening(false);
+        recognition.onend = () => setIsListening(false);
+      };
+
+      const openQuickExpenseModal = (category, defaultName, defaultSubcat, defaultAmount, defaultBeneficiary = 'Όλη η Οικογένεια') => {
+        setFormData({
+          date: getTodayFormatted(),
+          merchant: defaultName,
+          subcategory: defaultSubcat,
+          category: category,
+          memberId: selectedMember,
+          beneficiary: defaultBeneficiary || 'Όλη η Οικογένεια',
+          total: defaultAmount ? defaultAmount.toString() : '',
+          paymentMethod: 'Card',
+          notes: 'Γρήγορη καταχώρηση'
+        });
+        setShowFormModal(true);
+      };
+
+      const handleCreateManualExpense = (e) => {
+        e.preventDefault();
+        const mObj = members.find(m => m.id === formData.memberId) || members[0];
+        const newRec = {
+          id: `rec_manual_${Date.now()}`,
+          merchant: formData.merchant || 'Χειροκίνητη Εγγραφή',
+          subcategory: formData.subcategory,
+          date: formData.date || getTodayFormatted(),
+          category: formData.category,
+          memberId: mObj.id,
+          memberName: mObj.name,
+          beneficiary: formData.beneficiary || 'Όλη η Οικογένεια',
+          total: parseFloat(formData.total || 0),
+          paymentMethod: formData.paymentMethod,
+          notes: formData.notes
+        };
+        
+        saveReceipt(newRec);
+        setShowFormModal(false);
+
+        if (scanQueue.length > 0) {
+          const [nextScan, ...remaining] = scanQueue;
+          setScanQueue(remaining);
+          setFormData(nextScan);
+          setShowFormModal(true);
+        } else {
+          setFormData({
+            date: getTodayFormatted(),
+            merchant: '',
+            subcategory: '',
+            category: 'Supermarket',
+            memberId: selectedMember,
+            beneficiary: 'Όλη η Οικογένεια',
+            total: '',
+            paymentMethod: 'Card',
+            notes: ''
+          });
+        }
+      };
+
+      const handleFileUpload = (e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        setIsScanning(true);
+        setTimeout(() => {
+          setIsScanning(false);
+          const scannedItems = files.map((f, idx) => ({
+            date: getTodayFormatted(),
+            merchant: `Απόδειξη #${idx + 1} (${f.name.split('.')[0]})`,
+            subcategory: 'Σαρωμένη Απόδειξη',
+            category: 'Uncategorized',
+            memberId: selectedMember,
+            beneficiary: 'Όλη η Οικογένεια',
+            total: (15.50 + idx * 8.20).toFixed(2),
+            paymentMethod: 'Card',
+            notes: 'Σαρώθηκε από φωτογραφία'
+          }));
+
+          const [first, ...rest] = scannedItems;
+          setScanQueue(rest);
+          setFormData(first);
+          setShowFormModal(true);
+        }, 800);
+      };
+
+      const changeCategory = (receiptId, newCat) => {
+        const target = receipts.find(r => r.id === receiptId);
+        if (target) {
+          saveReceipt({ ...target, category: newCat });
+        }
+      };
+
+      const saveEditedReceipt = (e) => {
+        e.preventDefault();
+        const updatedBeneficiary = editingReceipt.beneficiary || 'Όλη η Οικογένεια';
+        saveReceipt({ ...editingReceipt, beneficiary: updatedBeneficiary });
+        setEditingReceipt(null);
+      };
+
+      const deleteReceipt = (id) => {
+        if (confirm('Θέλετε σίγουρα να ακυρώσετε/διαγράψετε αυτή την εγγραφή;')) {
+          removeReceipt(id);
+          if (editingReceipt?.id === id) setEditingReceipt(null);
+        }
+      };
+
+      const grandTotal = useMemo(() => receipts.reduce((acc, r) => acc + r.total, 0), [receipts]);
+
+      const mtdStats = useMemo(() => {
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        const dayOfMonth = today.getDate();
+
+        const mtdReceipts = receipts.filter(r => {
+          if (!r.date) return true;
+          const parts = r.date.split(/[\/\-]/);
+          if (parts.length === 3) {
+            let year = parseInt(parts[2].length === 2 ? `20${parts[2]}` : parts[2]);
+            let month = parseInt(parts[1]) - 1;
+            return month === currentMonth && year === currentYear;
+          }
+          return true;
+        });
+
+        const totalMTD = mtdReceipts.reduce((acc, r) => acc + r.total, 0);
+        const dailyAverage = dayOfMonth > 0 ? totalMTD / dayOfMonth : totalMTD;
+
+        return {
+          total: totalMTD,
+          count: mtdReceipts.length,
+          dayOfMonth,
+          dailyAverage,
+          lastUpdated: today.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })
+        };
+      }, [receipts]);
+
+      const beneficiaryBreakdown = useMemo(() => {
+        const counts = {};
+        BENEFICIARY_OPTIONS.forEach(b => counts[b] = 0);
+
+        receipts.forEach(r => {
+          const ben = r.beneficiary || 'Όλη η Οικογένεια';
+          if (counts[ben] !== undefined) {
+            counts[ben] += r.total;
+          } else {
+            counts['Όλη η Οικογένεια'] += r.total;
+          }
+        });
+
+        return BENEFICIARY_OPTIONS.map(b => ({
+          name: b,
+          total: counts[b] || 0,
+          percent: grandTotal > 0 ? ((counts[b] || 0) / grandTotal) * 100 : 0
+        }));
+      }, [receipts, grandTotal]);
+
+      const memberBreakdown = useMemo(() => {
+        return members.map((m) => {
+          const mRecs = receipts.filter((r) => r.memberId === m.id);
+          const payerSum = mRecs.reduce((acc, r) => acc + r.total, 0);
+
+          const beneficiarySum = receipts.reduce((acc, r) => {
+            const ben = r.beneficiary || 'Όλη η Οικογένεια';
+            if (ben === m.name) {
+              return acc + r.total;
+            } else if ((m.id === 'aggeliki' || m.id === 'christina') && (ben.includes('Κορίτσια') || ben.toLowerCase().includes('κοριτσ'))) {
+              return acc + (r.total / 2);
+            }
+            return acc;
+          }, 0);
+
+          const percent = grandTotal > 0 ? (payerSum / grandTotal) * 100 : 0;
+          return { ...m, count: mRecs.length, total: payerSum, beneficiarySum, percent };
+        });
+      }, [receipts, members, grandTotal]);
+
+      const categoryBreakdown = useMemo(() => {
+        return CATEGORIES.map((cat) => {
+          const catRecs = receipts.filter((r) => r.category === cat.id);
+          const sum = catRecs.reduce((acc, r) => acc + r.total, 0);
+          const percent = grandTotal > 0 ? (sum / grandTotal) * 100 : 0;
+          return { ...cat, count: catRecs.length, total: sum, percent };
+        });
+      }, [receipts, grandTotal]);
+
+      const filteredReceipts = useMemo(() => {
+        const filtered = receipts.filter((r) => {
+          const ben = r.beneficiary || 'Όλη η Οικογένεια';
+          const matchesSearch = r.merchant.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                (r.subcategory && r.subcategory.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                                r.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                ben.toLowerCase().includes(searchTerm.toLowerCase());
+          const matchesCategory = categoryFilter === 'All' || r.category === categoryFilter;
+          const matchesMember = memberFilter === 'All' || r.memberId === memberFilter;
+          const matchesBeneficiary = beneficiaryFilter === 'All' || 
+                                     ben === beneficiaryFilter ||
+                                     (beneficiaryFilter === 'Κορίτσια' && (ben.includes('Κορίτσια') || ben.toLowerCase().includes('κοριτσ')));
+          return matchesSearch && matchesCategory && matchesMember && matchesBeneficiary;
+        });
+
+        return filtered.sort((a, b) => {
+          let valA, valB;
+
+          if (sortField === 'date') {
+            valA = parseDateForSort(a.date);
+            valB = parseDateForSort(b.date);
+          } else if (sortField === 'total') {
+            valA = a.total;
+            valB = b.total;
+          } else if (sortField === 'merchant') {
+            valA = a.merchant.toLowerCase();
+            valB = b.merchant.toLowerCase();
+          } else if (sortField === 'subcategory') {
+            valA = (a.subcategory || '').toLowerCase();
+            valB = (b.subcategory || '').toLowerCase();
+          } else if (sortField === 'category') {
+            valA = a.category.toLowerCase();
+            valB = b.category.toLowerCase();
+          } else if (sortField === 'memberName') {
+            valA = a.memberName.toLowerCase();
+            valB = b.memberName.toLowerCase();
+          } else if (sortField === 'beneficiary') {
+            valA = (a.beneficiary || '').toLowerCase();
+            valB = (b.beneficiary || '').toLowerCase();
+          } else {
+            valA = parseDateForSort(a.date);
+            valB = parseDateForSort(b.date);
+          }
+
+          if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+          if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }, [receipts, searchTerm, categoryFilter, memberFilter, beneficiaryFilter, sortField, sortDirection]);
+
+      const uncategorizedReceipts = useMemo(() => {
+        return receipts.filter(r => r.category === 'Uncategorized');
+      }, [receipts]);
+
+      return (
+        <div className="min-h-screen pb-16">
+          <input type="file" ref={cameraInputRef} onChange={handleFileUpload} accept="image/*" capture="environment" className="hidden" />
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" multiple className="hidden" />
+          <input type="file" ref={excelImportRef} onChange={handleExcelImport} accept=".xlsx,.xls" className="hidden" />
+          <input type="file" ref={restoreJsonRef} onChange={importBackupJSON} accept=".json" className="hidden" />
+
+          {/* Header */}
+          <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-lg">
+                  ✨
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-xl font-black text-indigo-600">Family Receipt Manager</h1>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      🛡️ Auto Data Safe
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">Οικογένεια: Νίκος, Ανθή, Θεοδώρα, Αγγελική, Χριστίνα</p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 w-full sm:w-auto flex-wrap gap-y-2">
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  📊 Dashboard
+                </button>
+                <button
+                  onClick={() => setActiveTab('receipts')}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition ${activeTab === 'receipts' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  🧾 Λίστα ({receipts.length})
+                </button>
+                <button onClick={exportBackupJSON} className="px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md transition" title="Κατέβασμα αντιγράφου ασφαλείας">
+                  💾 Backup
+                </button>
+                <button onClick={() => restoreJsonRef.current?.click()} className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition" title="Επαναφορά από αντίγραφο">
+                  📤 Restore
+                </button>
+                <button onClick={exportToExcel} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md transition">
+                  📥 Excel
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+            {/* Quick Actions & Manual Entry Trigger */}
+            <section className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-3 gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-800">⚡ Καταχώρηση Εξόδων (Κουμπιά, Φόρμα ή Φωνή)</h2>
+                  <p className="text-xs text-slate-400">Επιλέξτε πληρωτή, πατήστε κουμπί ή σκανάρετε μία-μία τις αποδείξεις</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setScanQueue([]);
+                      setFormData({
+                        date: getTodayFormatted(),
+                        merchant: '',
+                        subcategory: '',
+                        category: 'Supermarket',
+                        memberId: selectedMember,
+                        beneficiary: 'Όλη η Οικογένεια',
+                        total: '',
+                        paymentMethod: 'Card',
+                        notes: ''
+                      });
+                      setShowFormModal(true);
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition shadow-md flex items-center gap-1"
+                  >
+                    <span>✏️</span>
+                    <span>Φόρμα Καταχώρησης</span>
+                  </button>
+                  <button
+                    onClick={handleVoiceInput}
+                    className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition ${isListening ? 'bg-red-600 text-white animate-bounce' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+                  >
+                    <span>🎤</span>
+                    <span>{isListening ? 'Ακούω...' : 'Φωνητικό'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Active Payer Selection */}
+              <div className="flex items-center space-x-2 bg-slate-100 p-2 rounded-2xl flex-wrap gap-1">
+                <span className="text-xs font-bold text-slate-500 mr-1">Πληρωτής:</span>
+                {members.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setSelectedMember(m.id)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold transition ${selectedMember === m.id ? `${m.color}` : 'text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    {m.name} ({m.role})
+                  </button>
+                ))}
+              </div>
+
+              {/* Quick Action Preset Buttons */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
+                <button onClick={() => openQuickExpenseModal('Supermarket', 'AB Vassilopoulos', 'Ψώνια', 45.00, 'Όλη η Οικογένεια')} className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-left hover:bg-emerald-100 transition">
+                  <span className="text-base block">🛒</span>
+                  <span className="text-xs font-bold text-emerald-900 block truncate">Supermarket</span>
+                  <span className="text-[10px] text-emerald-600 block">€45 - Προεπισκόπηση</span>
+                </button>
+
+                <button onClick={() => openQuickExpenseModal('Shopping & Gifts', 'Zara / Ρούχα', 'Μπλούζες', 60.00, 'Κορίτσια (Αγγελική & Χριστίνα 50-50)')} className="p-2.5 bg-pink-50 border border-pink-200 rounded-2xl text-left hover:bg-pink-100 transition">
+                  <span className="text-base block">👭</span>
+                  <span className="text-xs font-bold text-pink-900 block truncate">Ρούχα Κορίτσια</span>
+                  <span className="text-[10px] text-pink-600 block">€60 - Προεπισκόπηση</span>
+                </button>
+
+                <button onClick={() => openQuickExpenseModal('Fuel & Transport', 'EKO Gas', 'Βενζίνη', 50.00, 'Όλη η Οικογένεια')} className="p-2.5 bg-amber-50 border border-amber-200 rounded-2xl text-left hover:bg-amber-100 transition">
+                  <span className="text-base block">⛽</span>
+                  <span className="text-xs font-bold text-amber-900 block truncate">Βενζίνη</span>
+                  <span className="text-[10px] text-amber-600 block">€50 - Προεπισκόπηση</span>
+                </button>
+
+                <button onClick={() => openQuickExpenseModal('Education & Hobbies', 'Φροντιστήριο', 'Δίδακτρα', 80.00, 'Θεοδώρα')} className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-2xl text-left hover:bg-indigo-100 transition">
+                  <span className="text-base block">📚</span>
+                  <span className="text-xs font-bold text-indigo-900 block truncate">Φροντιστήριο</span>
+                  <span className="text-[10px] text-indigo-600 block">€80 - Θεοδώρα</span>
+                </button>
+
+                <button onClick={() => openQuickExpenseModal('Loans & Tax', 'Δάνεια - Εφορία', 'Δόση', 120.00, 'Όλη η Οικογένεια')} className="p-2.5 bg-red-50 border border-red-200 rounded-2xl text-left hover:bg-red-100 transition">
+                  <span className="text-base block">🏦</span>
+                  <span className="text-xs font-bold text-red-900 block truncate">Δάνεια/Εφορία</span>
+                  <span className="text-[10px] text-red-600 block">€120 - Προεπισκόπηση</span>
+                </button>
+
+                <button onClick={() => openQuickExpenseModal('Cigarettes', 'Περίπτερο', 'Τσιγάρα', 4.60, 'Νίκος')} className="p-2.5 bg-stone-50 border border-stone-200 rounded-2xl text-left hover:bg-stone-100 transition">
+                  <span className="text-base block">🚬</span>
+                  <span className="text-xs font-bold text-stone-900 block truncate">Τσιγάρα</span>
+                  <span className="text-[10px] text-stone-600 block">€4.60 - Νίκος</span>
+                </button>
+              </div>
+
+              {/* Sequential Photo Upload Options */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <button onClick={() => cameraInputRef.current?.click()} disabled={isScanning} className="p-2.5 rounded-2xl border border-dashed border-indigo-400 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center gap-2">
+                  <span>📸 Φωτογραφία (1-1 Σάρωση)</span>
+                </button>
+                <button onClick={() => fileInputRef.current?.click()} disabled={isScanning} className="p-2.5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center gap-2">
+                  <span>🖼️ Πολλαπλή Σάρωση (Διαδοχική)</span>
+                </button>
+                <button onClick={() => excelImportRef.current?.click()} className="p-2.5 rounded-2xl border border-dashed border-emerald-400 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center gap-2">
+                  <span>📥 Εισαγωγή Excel</span>
+                </button>
+              </div>
+            </section>
+
+            {/* Uncategorized Classifier */}
+            {uncategorizedReceipts.length > 0 && (
+              <section className="bg-orange-50 border border-orange-200 p-4 rounded-3xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">❓</span>
+                    <div>
+                      <h4 className="text-xs font-bold text-orange-900">Έχετε {uncategorizedReceipts.length} έξοδα στα "Διάφορα (Προς Ταξινόμηση)"</h4>
+                      <p className="text-[11px] text-orange-700">Επιλέξτε τη σωστή κατηγορία με 1 κλικ.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {uncategorizedReceipts.map(r => (
+                    <div key={r.id} className="p-2.5 bg-white rounded-2xl border border-orange-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="font-bold text-xs text-slate-800">{r.merchant}</span>
+                        <span className="text-[10px] text-slate-400 block">{r.date} — €{r.total.toFixed(2)} (Πληρωτής: {r.memberName} | Αφορά: {r.beneficiary || 'Όλη η Οικογένεια'})</span>
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {CATEGORIES.filter(c => c.id !== 'Uncategorized').map(cat => (
+                          <button
+                            key={cat.id}
+                            onClick={() => changeCategory(r.id, cat.id)}
+                            className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-100 text-[10px] font-bold text-slate-700 hover:text-indigo-700 border border-slate-200 transition"
+                          >
+                            {cat.icon} {cat.label.split('/')[0]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* MONTH TO DATE (MTD) & GRAND TOTAL DISPLAY BANNER */}
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Card 1: Grand Total */}
+              <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-5 rounded-3xl shadow-md flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-semibold text-indigo-200 uppercase tracking-wider block">Συνολικά Έξοδα</span>
+                  <h3 className="text-3xl font-black mt-0.5">€{grandTotal.toFixed(2)}</h3>
+                  <span className="text-[11px] text-indigo-200 mt-1 block">{receipts.length} Καταχωρημένες Εγγραφές</span>
+                </div>
+                <div className="text-3xl p-3 bg-white/10 rounded-2xl">💳</div>
+              </div>
+
+              {/* Card 2: Month To Date (MTD) */}
+              <div className="bg-gradient-to-r from-blue-700 to-cyan-800 text-white p-5 rounded-3xl shadow-md flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-cyan-200 uppercase tracking-wider block">Month To Date (MTD)</span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/30 text-[9px] font-bold text-cyan-100">1 - {mtdStats.dayOfMonth} Νοε</span>
+                  </div>
+                  <h3 className="text-3xl font-black mt-0.5">€{mtdStats.total.toFixed(2)}</h3>
+                  <span className="text-[11px] text-cyan-200 mt-1 block">Μέσο όρο/ημέρα: €{mtdStats.dailyAverage.toFixed(2)} ({mtdStats.count} αποδείξεις)</span>
+                </div>
+                <div className="text-3xl p-3 bg-white/10 rounded-2xl">📅</div>
+              </div>
+
+              {/* Card 3: Status / Last Update */}
+              <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-5 rounded-3xl shadow-md flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Τελευταία Ενημέρωση</span>
+                  <h3 className="text-2xl font-black mt-0.5">{mtdStats.lastUpdated}</h3>
+                  <span className="text-[11px] font-bold text-emerald-400 mt-1 block flex items-center gap-1">
+                    <span>🟢</span> Προστασία Δεδομένων Ενεργή
+                  </span>
+                </div>
+                <div className="text-3xl p-3 bg-white/10 rounded-2xl">🛡️</div>
+              </div>
+            </section>
+
+            {/* TAB CONTENT */}
+            {activeTab === 'dashboard' ? (
+              <div className="space-y-6">
+
+                {/* 1. ALL CATEGORIES GRID (NO SCROLL, ALL VISIBLE WITH PERCENTAGES) */}
+                <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <div>
+                      <h3 className="font-bold text-base text-slate-800">🏷️ Έξοδα ανά Κατηγορία (Όλες οι Κατηγορίες & Ποσοστά)</h3>
+                      <p className="text-xs text-slate-400">Άμεση επισκόπηση όλων των κατηγοριών στην οθόνη χωρίς scrolling</p>
+                    </div>
+                    <span className="text-xs font-bold px-3 py-1 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100">12 Κατηγορίες</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {categoryBreakdown.map((cat) => (
+                      <div key={cat.id} className={`p-3 rounded-2xl border transition-all flex flex-col justify-between ${cat.total > 0 ? 'bg-slate-50 border-slate-200' : 'bg-slate-50/40 border-slate-100 opacity-60'}`}>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xl">{cat.icon}</span>
+                            <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                              {cat.percent.toFixed(1)}%
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-slate-800 truncate" title={cat.label}>{cat.label.split('/')[0]}</p>
+                          <p className="text-[10px] text-slate-400">{cat.count} εγγραφές</p>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-slate-200/60">
+                          <p className="text-sm font-black text-slate-900">€{cat.total.toFixed(2)}</p>
+                          <div className="w-full h-1.5 bg-slate-200 rounded-full mt-1 overflow-hidden">
+                            <div className="h-full bg-indigo-600 transition-all duration-500" style={{ width: `${cat.percent}%` }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                  {/* 2. EXPENSES BY BENEFICIARY */}
+                  <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b pb-3">
+                      <div>
+                        <h3 className="font-bold text-base text-slate-800">🎯 Ποιον Αφορούν τα Έξοδα (Δικαιούχοι)</h3>
+                        <p className="text-xs text-slate-400">Πόσα είναι της οικογένειας, του Νίκου, της Άνθης & των παιδιών</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {beneficiaryBreakdown.map((ben) => (
+                        <div key={ben.name} className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-2xl flex items-center justify-between">
+                          <div className="flex items-center space-x-2.5">
+                            <span className="text-base">🎯</span>
+                            <div>
+                              <p className="text-xs font-bold text-slate-800">{ben.name}</p>
+                              <div className="w-32 sm:w-48 h-2 bg-slate-200 rounded-full mt-1 overflow-hidden">
+                                <div className="h-full bg-indigo-600 transition-all duration-500" style={{ width: `${ben.percent}%` }}></div>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-black text-slate-900 block">€{ben.total.toFixed(2)}</span>
+                            <span className="text-[10px] font-bold text-indigo-600">{ben.percent.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* 3. EXPENSES BY PAYER */}
+                  <section className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b pb-3">
+                      <div>
+                        <h3 className="font-bold text-base text-slate-800">👨‍👩‍👧‍👦 Πληρωμές ανά Μέλος Οικογένειας</h3>
+                        <p className="text-xs text-slate-400">Ποιος έβγαλε τα χρήματα από την τσέπη του</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {memberBreakdown.map((m) => (
+                        <div key={m.id} className="p-3 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+                          <div className="flex justify-between items-center text-xs font-bold">
+                            <span className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] ${m.badge}`}>{m.name} ({m.role})</span>
+                              <span className="text-slate-400 font-normal">({m.count} πληρωμές)</span>
+                            </span>
+                            <span className="font-black text-slate-800">Πληρώθηκαν: €{m.total.toFixed(2)}</span>
+                          </div>
+
+                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-600 transition-all duration-500" style={{ width: `${m.percent}%` }}></div>
+                          </div>
+
+                          {m.beneficiarySum > 0 && (
+                            <div className="flex justify-between items-center text-[11px] text-indigo-700 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-100">
+                              <span>🎯 Προσωπικά έξοδα που αφορούν {m.name}:</span>
+                              <span className="font-extrabold">€{m.beneficiarySum.toFixed(2)}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            ) : (
+              /* RECEIPTS LIST TAB WITH FULL SORTING AND FILTERS */
+              <section className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Αναζήτηση..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs"
+                  />
+                  <select
+                    value={memberFilter}
+                    onChange={(e) => setMemberFilter(e.target.value)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs"
+                  >
+                    <option value="All">Όλοι οι Πληρωτές</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                  <select
+                    value={beneficiaryFilter}
+                    onChange={(e) => setBeneficiaryFilter(e.target.value)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs"
+                  >
+                    <option value="All">Όλοι (Ποιον Αφορά)</option>
+                    {BENEFICIARY_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs"
+                  >
+                    <option value="All">Όλες οι Κατηγορίες</option>
+                    {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </select>
+
+                  {/* SORT FIELD SELECTOR */}
+                  <div className="flex gap-1">
+                    <select
+                      value={sortField}
+                      onChange={(e) => setSortField(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50/40 text-xs font-bold text-indigo-900"
+                    >
+                      <option value="date">📅 Ημερομηνία</option>
+                      <option value="total">💶 Ποσό (€)</option>
+                      <option value="merchant">🏪 Κατάστημα</option>
+                      <option value="subcategory">📝 Υποκατηγορία</option>
+                      <option value="category">🏷️ Κατηγορία</option>
+                      <option value="memberName">👤 Πληρωτής</option>
+                      <option value="beneficiary">🎯 Ποιον Αφορά</option>
+                    </select>
+                    <button
+                      onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition"
+                      title="Αλλαγή Σειράς (Αύξουσα / Φθίνουσας)"
+                    >
+                      {sortDirection === 'asc' ? '⬆️ Αύξ' : '⬇️ Φθίν'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase font-bold border-b border-slate-100 cursor-pointer select-none">
+                        <th onClick={() => handleSort('date')} className="py-3 px-4 hover:text-indigo-600">
+                          Ημερομηνία {sortField === 'date' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                        </th>
+                        <th onClick={() => handleSort('merchant')} className="py-3 px-4 hover:text-indigo-600">
+                          Κατάστημα / Παραλήπτης {sortField === 'merchant' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                        </th>
+                        <th onClick={() => handleSort('subcategory')} className="py-3 px-4 hover:text-indigo-600">
+                          Υποκατηγορία {sortField === 'subcategory' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                        </th>
+                        <th onClick={() => handleSort('category')} className="py-3 px-4 hover:text-indigo-600">
+                          Κατηγορία {sortField === 'category' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                        </th>
+                        <th onClick={() => handleSort('memberName')} className="py-3 px-4 hover:text-indigo-600">
+                          Πληρωτής {sortField === 'memberName' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                        </th>
+                        <th onClick={() => handleSort('beneficiary')} className="py-3 px-4 bg-indigo-50/50 text-indigo-800 hover:text-indigo-900">
+                          Ποιον Αφορά {sortField === 'beneficiary' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                        </th>
+                        <th onClick={() => handleSort('total')} className="py-3 px-4 text-right hover:text-indigo-600">
+                          Ποσό (€) {sortField === 'total' ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+                        </th>
+                        <th className="py-3 px-4 text-center">Διόρθωση</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredReceipts.map((r) => {
+                        const mObj = members.find((m) => m.id === r.memberId);
+                        const cObj = CATEGORIES.find((c) => c.id === r.category);
+                        const benText = r.beneficiary || 'Όλη η Οικογένεια';
+                        const badgeStyle = getBeneficiaryBadge(benText);
+
+                        return (
+                          <tr key={r.id} className="hover:bg-slate-50">
+                            <td className="py-3 px-4 font-mono text-xs text-slate-500 font-bold">{r.date}</td>
+                            <td className="py-3 px-4 font-bold text-slate-800">{r.merchant}</td>
+                            <td className="py-3 px-4 text-xs text-slate-600">{r.subcategory || '-'}</td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-0.5 rounded text-xs border ${cObj?.color || 'bg-slate-100'}`}>
+                                {cObj?.icon} {cObj?.label.split('/')[0] || r.category}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${mObj?.badge || ''}`}>
+                                {r.memberName}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 bg-indigo-50/30">
+                              <span className={`px-2.5 py-1 rounded-lg text-xs border ${badgeStyle}`}>
+                                🎯 {benText}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right font-black text-slate-900">€{r.total.toFixed(2)}</td>
+                            <td className="py-3 px-4 text-center space-x-1">
+                              <button onClick={() => setEditingReceipt({ ...r })} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition">
+                                ✏️
+                              </button>
+                              <button onClick={() => deleteReceipt(r.id)} className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg transition">
+                                🗑️
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {/* MANUAL ENTRY & INDIVIDUAL SCAN REVIEW MODAL */}
+            {showFormModal && (
+              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-800">
+                        {scanQueue.length > 0 ? `📸 Επιβεβαίωση Απόδειξης (Απομένουν άλλες ${scanQueue.length})` : '📋 Επισκόπηση & Επιβεβαίωση Καταχώρησης'}
+                      </h3>
+                      <p className="text-[11px] text-slate-400">Ελέγξτε και συμπληρώστε τις κατηγορίες πριν την υποβολή</p>
+                    </div>
+                    <button onClick={() => { setShowFormModal(false); setScanQueue([]); }} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                  </div>
+
+                  <form onSubmit={handleCreateManualExpense} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Ημερομηνία</label>
+                        <input
+                          type="text"
+                          value={formData.date}
+                          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-semibold"
+                          placeholder="08/11/26"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Ποσό Σάρωσης (€)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.total}
+                          onChange={(e) => setFormData({ ...formData, total: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-black text-emerald-700 bg-emerald-50/60"
+                          placeholder="0.00"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Κατάστημα / Παραλήπτης</label>
+                        <input
+                          type="text"
+                          value={formData.merchant}
+                          onChange={(e) => setFormData({ ...formData, merchant: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-semibold"
+                          placeholder="π.χ. AB Vassilopoulos"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Υποκατηγορία / Περιγραφή</label>
+                        <input
+                          type="text"
+                          value={formData.subcategory}
+                          onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-semibold"
+                          placeholder="π.χ. Ψώνια εβδομάδας"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-indigo-700 block mb-1">🏷️ Κατηγορία Εξόδου</label>
+                        <select
+                          value={formData.category}
+                          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                          className="w-full px-3 py-2 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-900 bg-indigo-50/30"
+                        >
+                          {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-indigo-700 block mb-1">🎯 Ποιον αφορά;</label>
+                        <select
+                          value={formData.beneficiary}
+                          onChange={(e) => setFormData({ ...formData, beneficiary: e.target.value })}
+                          className="w-full px-3 py-2 border border-indigo-300 bg-indigo-50 rounded-xl text-xs font-bold text-indigo-900"
+                        >
+                          {BENEFICIARY_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Πληρωτής (Μέλος)</label>
+                        <select
+                          value={formData.memberId}
+                          onChange={(e) => setFormData({ ...formData, memberId: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-semibold"
+                        >
+                          {members.map(m => <option key={m.id} value={m.id}>{m.name} ({m.role})</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Τρόπος Πληρωμής</label>
+                        <select
+                          value={formData.paymentMethod}
+                          onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-semibold"
+                        >
+                          <option value="Card">Κάρτα</option>
+                          <option value="Μετρητά">Μετρητά</option>
+                          <option value="Πάγια">Πάγια Εντολή</option>
+                          <option value="Bank Transfer">Κατάθεση</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-3 border-t">
+                      <button type="button" onClick={() => { setShowFormModal(false); setScanQueue([]); }} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold">Ακύρωση</button>
+                      <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1">
+                        <span>✅</span>
+                        <span>{scanQueue.length > 0 ? 'Υποβολή & Επόμενη Απόδειξη' : 'Υποβολή & Καταχώρηση'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* EDIT ITEM MODAL */}
+            {editingReceipt && (
+              <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border border-slate-200">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <h3 className="text-base font-bold text-slate-800">✏️ Διόρθωση Εγγραφής</h3>
+                    <button onClick={() => setEditingReceipt(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                  </div>
+
+                  <form onSubmit={saveEditedReceipt} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Ημερομηνία</label>
+                        <input
+                          type="text"
+                          value={editingReceipt.date}
+                          onChange={(e) => setEditingReceipt({ ...editingReceipt, date: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-semibold"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Ποσό (€)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editingReceipt.total}
+                          onChange={(e) => setEditingReceipt({ ...editingReceipt, total: parseFloat(e.target.value || 0) })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-bold"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Κατάστημα / Παραλήπτης</label>
+                        <input
+                          type="text"
+                          value={editingReceipt.merchant}
+                          onChange={(e) => setEditingReceipt({ ...editingReceipt, merchant: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-semibold"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Υποκατηγορία / Περιγραφή</label>
+                        <input
+                          type="text"
+                          value={editingReceipt.subcategory || ''}
+                          onChange={(e) => setEditingReceipt({ ...editingReceipt, subcategory: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs font-semibold"
+                          placeholder="π.χ. Μπλούζες / Βενζίνη"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Κατηγορία</label>
+                        <select
+                          value={editingReceipt.category}
+                          onChange={(e) => setEditingReceipt({ ...editingReceipt, category: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs"
+                        >
+                          {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-indigo-700 block mb-1">🎯 Ποιον αφορά;</label>
+                        <select
+                          value={editingReceipt.beneficiary || 'Όλη η Οικογένεια'}
+                          onChange={(e) => setEditingReceipt({ ...editingReceipt, beneficiary: e.target.value })}
+                          className="w-full px-3 py-2 border border-indigo-300 bg-indigo-50 rounded-xl text-xs font-bold text-indigo-900"
+                        >
+                          {BENEFICIARY_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Πληρωτής</label>
+                        <select
+                          value={editingReceipt.memberId}
+                          onChange={(e) => {
+                            const mObj = members.find(m => m.id === e.target.value);
+                            setEditingReceipt({ ...editingReceipt, memberId: mObj.id, memberName: mObj.name });
+                          }}
+                          className="w-full px-3 py-2 border rounded-xl text-xs"
+                        >
+                          {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-500 block mb-1">Τρόπος Πληρωμής</label>
+                        <input
+                          type="text"
+                          value={editingReceipt.paymentMethod}
+                          onChange={(e) => setEditingReceipt({ ...editingReceipt, paymentMethod: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-xl text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-3 border-t">
+                      <button
+                        type="button"
+                        onClick={() => deleteReceipt(editingReceipt.id)}
+                        className="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl text-xs font-bold"
+                      >
+                        🗑️ Ακύρωση / Διαγραφή
+                      </button>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setEditingReceipt(null)} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold">Πίσω</button>
+                        <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold">Αποθήκευση</button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
